@@ -40,6 +40,8 @@ import {
   IMPORT_LOADING_TAP,
   IMPORT_PARAMETERS,
   IMPORT_PARAMETERS_TAP,
+  IMPORT_POPOVER_OPEN,
+  IMPORT_POPOVER_OPEN_TAP,
   IMPORT_PREVIEW_STATE,
   IMPORT_PREVIEW_STATE_TAP,
   IMPORT_ROWS,
@@ -147,6 +149,10 @@ export function registerJownaTaps(): void {
     initial: IMPORT_DATASET_NAME.defaultValue ?? "",
     handleGrip: IMPORT_DATASET_NAME_TAP,
   });
+  const importPopoverOpenTap = createAtomValueTap(IMPORT_POPOVER_OPEN, {
+    initial: IMPORT_POPOVER_OPEN.defaultValue ?? false,
+    handleGrip: IMPORT_POPOVER_OPEN_TAP,
+  });
   const previewFilterTap = createAtomValueTap(PREVIEW_FILTER, {
     initial: PREVIEW_FILTER.defaultValue ?? "",
     handleGrip: PREVIEW_FILTER_TAP,
@@ -204,6 +210,7 @@ export function registerJownaTaps(): void {
     importLoadingTap,
     importCanApplyTap,
     importDatasetNameTap,
+    importPopoverOpenTap,
     previewFilterTap,
     newProjectNameTap,
     chartSettingsTap,
@@ -283,6 +290,7 @@ export function registerJownaTaps(): void {
       } else {
         datasetsTap.set([]);
         activeDatasetIdTap.set(null);
+        importPopoverOpenTap.set(true);
       }
     },
 
@@ -317,6 +325,25 @@ export function registerJownaTaps(): void {
 
     deleteProject: async (projectId) => {
       await storage.projects.deleteProject(projectId);
+      await actions.refreshProjects();
+    },
+
+    renameDataset: async (datasetId, nextName) => {
+      const dataset = await storage.datasets.getDataset(datasetId);
+      if (!dataset) {
+        throw new Error(`Dataset '${datasetId}' no longer exists.`);
+      }
+
+      const name = normalizeNonEmpty(nextName, dataset.name);
+      if (name === dataset.name) {
+        return;
+      }
+
+      await storage.datasets.saveDataset({
+        ...dataset,
+        name,
+      });
+
       await actions.refreshProjects();
     },
 
@@ -419,6 +446,7 @@ export function registerJownaTaps(): void {
       await actions.refreshProjects();
       await actions.openChart(dataset.id);
       importDatasetNameTap.set(name);
+      importPopoverOpenTap.set(false);
     },
 
     openChart: (datasetId) => {
@@ -518,6 +546,9 @@ export function registerJownaTaps(): void {
   async function loadDatasetsForProject(projectId: string): Promise<void> {
     const datasets = sortDatasets(await storage.datasets.listByProject(projectId));
     datasetsTap.set(datasets);
+    if (datasets.length === 0) {
+      importPopoverOpenTap.set(true);
+    }
 
     const project = await storage.projects.getProject(projectId);
     const preferredDatasetId = project?.activeDatasetId ?? null;

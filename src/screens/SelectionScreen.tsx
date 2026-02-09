@@ -1,9 +1,8 @@
 import { useGrip, useTextGrip } from "@owebeeone/grip-react";
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent, type KeyboardEvent } from "react";
 import {
   ACTIVE_DATASET_ID,
   ACTIVE_PROJECT_ID,
-  APP_VIEW,
   DATASETS,
   DEFAULT_IMPORT_PARAMETERS,
   IMPORT_CAN_APPLY,
@@ -13,6 +12,8 @@ import {
   IMPORT_LOADING,
   IMPORT_PARAMETERS,
   IMPORT_PARAMETERS_TAP,
+  IMPORT_POPOVER_OPEN,
+  IMPORT_POPOVER_OPEN_TAP,
   IMPORT_PREVIEW_STATE,
   IMPORT_SOURCE,
   IMPORT_SOURCE_TAP,
@@ -25,7 +26,6 @@ import {
   PREVIEW_FILTER,
   PREVIEW_FILTER_TAP,
   PROJECTS,
-  type AppView,
 } from "../grips";
 
 export function SelectionScreen() {
@@ -34,7 +34,6 @@ export function SelectionScreen() {
   const activeProjectId = useGrip(ACTIVE_PROJECT_ID);
   const datasets = useGrip(DATASETS) ?? [];
   const activeDatasetId = useGrip(ACTIVE_DATASET_ID);
-  const appView = useGrip(APP_VIEW) as AppView | undefined;
 
   const importSource = useGrip(IMPORT_SOURCE);
   const importParameters = useGrip(IMPORT_PARAMETERS) ?? DEFAULT_IMPORT_PARAMETERS;
@@ -45,11 +44,15 @@ export function SelectionScreen() {
   const importFatalError = useGrip(IMPORT_FATAL_ERROR);
   const importLoading = useGrip(IMPORT_LOADING) ?? false;
   const importCanApply = useGrip(IMPORT_CAN_APPLY) ?? false;
+  const importPopoverOpen = useGrip(IMPORT_POPOVER_OPEN) ?? false;
+  const importPopoverOpenTap = useGrip(IMPORT_POPOVER_OPEN_TAP);
 
   const projectNameBind = useTextGrip(NEW_PROJECT_NAME, NEW_PROJECT_NAME_TAP);
   const datasetNameBind = useTextGrip(IMPORT_DATASET_NAME, IMPORT_DATASET_NAME_TAP);
   const previewFilterBind = useTextGrip(PREVIEW_FILTER, PREVIEW_FILTER_TAP);
   const urlInputBind = useTextGrip(IMPORT_URL_INPUT, IMPORT_URL_INPUT_TAP);
+  const [editingDatasetId, setEditingDatasetId] = useState<string | null>(null);
+  const [editingDatasetName, setEditingDatasetName] = useState("");
 
   const filteredRows = (importPreview?.rows ?? []).filter((row) => {
     const query = previewFilterBind.value.trim().toLowerCase();
@@ -74,6 +77,70 @@ export function SelectionScreen() {
       ...(current ?? DEFAULT_IMPORT_PARAMETERS),
       ...partial,
     }));
+  };
+
+  const openImportPopover = () => {
+    importPopoverOpenTap?.set(true);
+  };
+
+  const closeImportPopover = () => {
+    importPopoverOpenTap?.set(false);
+  };
+
+  const onCancelImportPopover = () => {
+    importPopoverOpenTap?.set(false);
+  };
+
+  const onOpenImportForProject = async (projectId: string) => {
+    if (!actions) {
+      return;
+    }
+    await actions.openProject(projectId);
+    importPopoverOpenTap?.set(true);
+  };
+
+  const onStartDatasetRename = (datasetId: string, currentName: string) => {
+    setEditingDatasetId(datasetId);
+    setEditingDatasetName(currentName);
+  };
+
+  const onCancelDatasetRename = () => {
+    setEditingDatasetId(null);
+    setEditingDatasetName("");
+  };
+
+  const onCommitDatasetRename = async (datasetId: string) => {
+    const dataset = datasets.find((candidate) => candidate.id === datasetId);
+    const nextNameInput = editingDatasetName.trim();
+    const nextName = nextNameInput.length > 0 ? nextNameInput : (dataset?.name ?? "");
+    onCancelDatasetRename();
+
+    if (!actions || !dataset || nextName.length === 0 || nextName === dataset.name) {
+      return;
+    }
+
+    await actions.renameDataset(datasetId, nextName);
+  };
+
+  const onDatasetRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.currentTarget.blur();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancelDatasetRename();
+    }
+  };
+
+  const onViewChartFromPopover = () => {
+    if (!actions || !activeDatasetId) {
+      return;
+    }
+    actions.openChart(activeDatasetId);
+    importPopoverOpenTap?.set(false);
   };
 
   const onFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -113,11 +180,11 @@ export function SelectionScreen() {
     <div className="app-shell">
       <div className="app-frame">
         <header className="panel">
-          <h1>Jowna Phase 1</h1>
-          <div className="muted">
-            Selection + import preview workflow. Current view:{" "}
-            <strong>{appView ?? "selection"}</strong>
-          </div>
+          <h1>
+            <a href="https://github.com/owebeeone/jowna" target="_blank" rel="noreferrer">
+              Jowna - data visualizer
+            </a>
+          </h1>
         </header>
 
         <div className="panel-grid">
@@ -146,13 +213,14 @@ export function SelectionScreen() {
               >
                 Refresh
               </button>
-              <button
-                className="ghost"
+              <button className="ghost" onClick={openImportPopover}>
+                Import Tool
+              </button>
+              <ChartIconButton
                 onClick={() => actions?.openChart(activeDatasetId)}
                 disabled={!actions || !activeDatasetId}
-              >
-                Open Chart
-              </button>
+                label="Open active chart"
+              />
             </div>
 
             <ul className="project-list">
@@ -165,8 +233,13 @@ export function SelectionScreen() {
                     </div>
                     <div className="muted">datasets: {project.datasetIds.length}</div>
                     <div className="row">
-                      <button className="ghost" onClick={() => actions?.openProject(project.id)}>
-                        Open
+                      <button
+                        className="ghost"
+                        onClick={() => {
+                          void onOpenImportForProject(project.id);
+                        }}
+                      >
+                        Import
                       </button>
                       <button
                         className="ghost"
@@ -188,250 +261,342 @@ export function SelectionScreen() {
               {datasets.length === 0 && <div className="muted">No datasets yet.</div>}
               {datasets.map((dataset) => (
                 <div key={dataset.id} className="row" style={{ justifyContent: "space-between" }}>
-                  <span>
-                    {dataset.name}
-                    {dataset.id === activeDatasetId ? " (active)" : ""}
-                  </span>
-                  <button className="ghost" onClick={() => actions?.openChart(dataset.id)}>
-                    Chart
-                  </button>
+                  <div className="dataset-name-wrap">
+                    {editingDatasetId === dataset.id ? (
+                      <input
+                        className="dataset-name-input"
+                        autoFocus
+                        value={editingDatasetName}
+                        onChange={(event) => setEditingDatasetName(event.target.value)}
+                        onBlur={() => {
+                          void onCommitDatasetRename(dataset.id);
+                        }}
+                        onKeyDown={onDatasetRenameKeyDown}
+                      />
+                    ) : (
+                      <button
+                        className="dataset-name-button"
+                        onClick={() => onStartDatasetRename(dataset.id, dataset.name)}
+                      >
+                        {dataset.name}
+                      </button>
+                    )}
+                    {dataset.id === activeDatasetId && <span className="muted">(active)</span>}
+                  </div>
+                  <ChartIconButton
+                    className="ghost"
+                    onClick={() => actions?.openChart(dataset.id)}
+                    disabled={!actions}
+                    label={`Open chart for ${dataset.name}`}
+                  />
                 </div>
               ))}
             </div>
           </section>
-
-          <section className="panel stack">
-            <h2>Import Tool</h2>
-
-            <div className="stack">
-              <label>
-                <span className="muted">File Source</span>
-                <input type="file" onChange={onFileChange} />
-              </label>
-              <div className="row">
-                <input
-                  placeholder="https://example.com/data.tsv"
-                  value={urlInputBind.value}
-                  onChange={urlInputBind.onChange}
-                />
-                <button className="ghost" onClick={onLoadFromUrl}>
-                  Load URL
-                </button>
-              </div>
-              <div className="muted">
-                Source: <strong>{importSource?.name ?? "none"}</strong>
-              </div>
-            </div>
-
-            <div className="panel stack" style={{ background: "#fafcfb" }}>
-              <h3>Parse Parameters</h3>
-
-              <div className="row">
-                <label style={{ flex: 1 }}>
-                  <span className="muted">Format</span>
-                  <select
-                    value={importParameters.format}
-                    onChange={(event) =>
-                      updateImportParameters({
-                        format: event.target.value as typeof importParameters.format,
-                      })
-                    }
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="tsv">TSV</option>
-                    <option value="csv">CSV</option>
-                    <option value="json-hierarchy">JSON hierarchy</option>
-                    <option value="json-flat">JSON flat rows</option>
-                  </select>
-                </label>
-
-                <label style={{ flex: 1 }}>
-                  <span className="muted">Delimiter</span>
-                  <input
-                    value={importParameters.delimiter}
-                    onChange={(event) => updateImportParameters({ delimiter: event.target.value })}
-                  />
-                </label>
-              </div>
-
-              <label className="row" style={{ alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  style={{ width: "auto" }}
-                  checked={importParameters.hasHeaderRow}
-                  onChange={(event) =>
-                    updateImportParameters({ hasHeaderRow: event.target.checked })
-                  }
-                />
-                <span>Header row</span>
-              </label>
-
-              <div className="row">
-                <label style={{ flex: 1 }}>
-                  <span className="muted">Comment Prefix</span>
-                  <input
-                    value={importParameters.commentPrefix}
-                    onChange={(event) =>
-                      updateImportParameters({ commentPrefix: event.target.value })
-                    }
-                  />
-                </label>
-                <label style={{ flex: 1 }}>
-                  <span className="muted">Magnitude Field</span>
-                  <input
-                    value={importParameters.magnitudeField}
-                    onChange={(event) =>
-                      updateImportParameters({ magnitudeField: event.target.value })
-                    }
-                  />
-                </label>
-              </div>
-
-              <label>
-                <span className="muted">Path Fields (comma-separated)</span>
-                <input
-                  value={importParameters.pathFields.join(",")}
-                  onChange={(event) =>
-                    updateImportParameters({
-                      pathFields: event.target.value
-                        .split(",")
-                        .map((field) => field.trim())
-                        .filter((field) => field.length > 0),
-                    })
-                  }
-                />
-              </label>
-
-              <div className="row">
-                <label style={{ flex: 1 }}>
-                  <span className="muted">URL Field</span>
-                  <input
-                    value={importParameters.urlField ?? ""}
-                    onChange={(event) =>
-                      updateImportParameters({
-                        urlField: event.target.value.trim().length > 0 ? event.target.value : null,
-                      })
-                    }
-                  />
-                </label>
-                <label style={{ flex: 1 }}>
-                  <span className="muted">Description Field</span>
-                  <input
-                    value={importParameters.descriptionField ?? ""}
-                    onChange={(event) =>
-                      updateImportParameters({
-                        descriptionField:
-                          event.target.value.trim().length > 0 ? event.target.value : null,
-                      })
-                    }
-                  />
-                </label>
-              </div>
-
-              <label>
-                <span className="muted">Attribute Fields (comma-separated)</span>
-                <input
-                  value={importParameters.attributeFields.join(",")}
-                  onChange={(event) =>
-                    updateImportParameters({
-                      attributeFields: event.target.value
-                        .split(",")
-                        .map((field) => field.trim())
-                        .filter((field) => field.length > 0),
-                    })
-                  }
-                />
-              </label>
-
-              <div className="row">
-                <button
-                  onClick={() => actions?.parsePreview()}
-                  disabled={!actions || importLoading}
-                >
-                  {importLoading ? "Parsing..." : "Preview Parse"}
-                </button>
-              </div>
-            </div>
-
-            <div className="panel stack" style={{ background: "#fafcfb" }}>
-              <h3>Preview</h3>
-              {importFatalError && <div style={{ color: "#b23a2f" }}>{importFatalError}</div>}
-              <div className="muted">Rows: {importPreview?.totalRows ?? 0}</div>
-
-              <label>
-                <span className="muted">Filter Preview</span>
-                <input value={previewFilterBind.value} onChange={previewFilterBind.onChange} />
-              </label>
-
-              <div className="preview-wrap">
-                <table className="preview-table">
-                  <thead>
-                    <tr>
-                      <th>row</th>
-                      <th>magnitude</th>
-                      <th>path</th>
-                      <th>url</th>
-                      <th>description</th>
-                      <th>attributes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRows.map((row) => (
-                      <tr key={row.rowId}>
-                        <td>{row.sourceRow}</td>
-                        <td>{row.magnitude}</td>
-                        <td>{row.path.join(" / ")}</td>
-                        <td>{row.url ?? ""}</td>
-                        <td>{row.description ?? ""}</td>
-                        <td>
-                          {Object.entries(row.attributes)
-                            .map(([key, value]) => `${key}:${value}`)
-                            .join(" | ")}
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredRows.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="muted">
-                          No preview rows.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div>
-                <h4>Warnings</h4>
-                <ul className="warning-list">
-                  {importWarnings.map((warning, index) => (
-                    <li key={`${warning.code}-${warning.row ?? 0}-${index}`}>
-                      <strong>{warning.code}</strong>: {warning.message}
-                      {warning.row ? ` (row ${warning.row})` : ""}
-                      {warning.column ? ` [${warning.column}]` : ""}
-                    </li>
-                  ))}
-                  {importWarnings.length === 0 && <li className="muted">No warnings.</li>}
-                </ul>
-              </div>
-
-              <div className="row">
-                <input
-                  placeholder="Dataset name"
-                  value={datasetNameBind.value}
-                  onChange={datasetNameBind.onChange}
-                />
-                <button
-                  onClick={() => actions?.applyImport(datasetNameBind.value)}
-                  disabled={!actions || !importCanApply || !activeProjectId}
-                >
-                  Apply Import
-                </button>
-              </div>
-            </div>
-          </section>
         </div>
       </div>
+
+      {importPopoverOpen && (
+        <div className="import-popover-backdrop" onClick={closeImportPopover}>
+          <section
+            className="panel import-popover"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Import Tool"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="import-popover-header">
+              <h2>Import Tool</h2>
+              <button
+                className="ghost popover-x"
+                onClick={onCancelImportPopover}
+                aria-label="Cancel import dialog"
+              >
+                X
+              </button>
+            </header>
+
+            <div className="import-popover-body stack">
+              <div className="stack">
+                <label>
+                  <span className="muted">File Source</span>
+                  <input type="file" onChange={onFileChange} />
+                </label>
+                <div className="row">
+                  <input
+                    placeholder="https://example.com/data.tsv"
+                    value={urlInputBind.value}
+                    onChange={urlInputBind.onChange}
+                  />
+                  <button className="ghost" onClick={onLoadFromUrl}>
+                    Load URL
+                  </button>
+                </div>
+                <div className="muted">
+                  Source: <strong>{importSource?.name ?? "none"}</strong>
+                </div>
+              </div>
+
+              <div className="panel stack" style={{ background: "#fafcfb" }}>
+                <h3>Parse Parameters</h3>
+
+                <div className="row">
+                  <label style={{ flex: 1 }}>
+                    <span className="muted">Format</span>
+                    <select
+                      value={importParameters.format}
+                      onChange={(event) =>
+                        updateImportParameters({
+                          format: event.target.value as typeof importParameters.format,
+                        })
+                      }
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="tsv">TSV</option>
+                      <option value="csv">CSV</option>
+                      <option value="json-hierarchy">JSON hierarchy</option>
+                      <option value="json-flat">JSON flat rows</option>
+                    </select>
+                  </label>
+
+                  <label style={{ flex: 1 }}>
+                    <span className="muted">Delimiter</span>
+                    <input
+                      value={importParameters.delimiter}
+                      onChange={(event) =>
+                        updateImportParameters({ delimiter: event.target.value })
+                      }
+                    />
+                  </label>
+                </div>
+
+                <label className="row" style={{ alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    style={{ width: "auto" }}
+                    checked={importParameters.hasHeaderRow}
+                    onChange={(event) =>
+                      updateImportParameters({ hasHeaderRow: event.target.checked })
+                    }
+                  />
+                  <span>Header row</span>
+                </label>
+
+                <div className="row">
+                  <label style={{ flex: 1 }}>
+                    <span className="muted">Comment Prefix</span>
+                    <input
+                      value={importParameters.commentPrefix}
+                      onChange={(event) =>
+                        updateImportParameters({ commentPrefix: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label style={{ flex: 1 }}>
+                    <span className="muted">Magnitude Field</span>
+                    <input
+                      value={importParameters.magnitudeField}
+                      onChange={(event) =>
+                        updateImportParameters({ magnitudeField: event.target.value })
+                      }
+                    />
+                  </label>
+                </div>
+
+                <label>
+                  <span className="muted">Path Fields (comma-separated)</span>
+                  <input
+                    value={importParameters.pathFields.join(",")}
+                    onChange={(event) =>
+                      updateImportParameters({
+                        pathFields: event.target.value
+                          .split(",")
+                          .map((field) => field.trim())
+                          .filter((field) => field.length > 0),
+                      })
+                    }
+                  />
+                </label>
+
+                <div className="row">
+                  <label style={{ flex: 1 }}>
+                    <span className="muted">URL Field</span>
+                    <input
+                      value={importParameters.urlField ?? ""}
+                      onChange={(event) =>
+                        updateImportParameters({
+                          urlField:
+                            event.target.value.trim().length > 0 ? event.target.value : null,
+                        })
+                      }
+                    />
+                  </label>
+                  <label style={{ flex: 1 }}>
+                    <span className="muted">Description Field</span>
+                    <input
+                      value={importParameters.descriptionField ?? ""}
+                      onChange={(event) =>
+                        updateImportParameters({
+                          descriptionField:
+                            event.target.value.trim().length > 0 ? event.target.value : null,
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+
+                <label>
+                  <span className="muted">Attribute Fields (comma-separated)</span>
+                  <input
+                    value={importParameters.attributeFields.join(",")}
+                    onChange={(event) =>
+                      updateImportParameters({
+                        attributeFields: event.target.value
+                          .split(",")
+                          .map((field) => field.trim())
+                          .filter((field) => field.length > 0),
+                      })
+                    }
+                  />
+                </label>
+
+                <div className="row">
+                  <button
+                    onClick={() => actions?.parsePreview()}
+                    disabled={!actions || importLoading}
+                  >
+                    {importLoading ? "Parsing..." : "Preview Parse"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="panel stack" style={{ background: "#fafcfb" }}>
+                <h3>Preview</h3>
+                {importFatalError && <div style={{ color: "#b23a2f" }}>{importFatalError}</div>}
+                <div className="muted">Rows: {importPreview?.totalRows ?? 0}</div>
+
+                <label>
+                  <span className="muted">Filter Preview</span>
+                  <input value={previewFilterBind.value} onChange={previewFilterBind.onChange} />
+                </label>
+
+                <div className="preview-wrap">
+                  <table className="preview-table">
+                    <thead>
+                      <tr>
+                        <th>row</th>
+                        <th>magnitude</th>
+                        <th>path</th>
+                        <th>url</th>
+                        <th>description</th>
+                        <th>attributes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRows.map((row) => (
+                        <tr key={row.rowId}>
+                          <td>{row.sourceRow}</td>
+                          <td>{row.magnitude}</td>
+                          <td>{row.path.join(" / ")}</td>
+                          <td>{row.url ?? ""}</td>
+                          <td>{row.description ?? ""}</td>
+                          <td>
+                            {Object.entries(row.attributes)
+                              .map(([key, value]) => `${key}:${value}`)
+                              .join(" | ")}
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredRows.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="muted">
+                            No preview rows.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <h4>Warnings</h4>
+                  <ul className="warning-list">
+                    {importWarnings.map((warning, index) => (
+                      <li key={`${warning.code}-${warning.row ?? 0}-${index}`}>
+                        <strong>{warning.code}</strong>: {warning.message}
+                        {warning.row ? ` (row ${warning.row})` : ""}
+                        {warning.column ? ` [${warning.column}]` : ""}
+                      </li>
+                    ))}
+                    {importWarnings.length === 0 && <li className="muted">No warnings.</li>}
+                  </ul>
+                </div>
+
+                <div className="row">
+                  <input
+                    placeholder="Dataset name"
+                    value={datasetNameBind.value}
+                    onChange={datasetNameBind.onChange}
+                  />
+                  <button
+                    onClick={() => actions?.applyImport(datasetNameBind.value)}
+                    disabled={!actions || !importCanApply || !activeProjectId}
+                  >
+                    Apply Import
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <footer className="import-popover-footer row">
+              <button className="ghost" onClick={onCancelImportPopover}>
+                Cancel
+              </button>
+              <button className="ghost" onClick={closeImportPopover}>
+                Close
+              </button>
+              <button onClick={onViewChartFromPopover} disabled={!actions || !activeDatasetId}>
+                View Chart
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </div>
+  );
+}
+
+interface ChartIconButtonProps {
+  className?: string;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}
+
+function ChartIconButton({ className, disabled, label, onClick }: ChartIconButtonProps) {
+  const classes = className ? `chart-icon-button ${className}` : "chart-icon-button";
+  return (
+    <button className={classes} onClick={onClick} disabled={disabled} aria-label={label}>
+      <ChartOutlineIcon />
+    </button>
+  );
+}
+
+function ChartOutlineIcon() {
+  return (
+    <svg
+      className="chart-outline-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M12 3v6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M17.4 6.7l-3.8 4.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M20.8 13l-6-0.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M7 19.7l2.4-5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
   );
 }

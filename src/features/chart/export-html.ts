@@ -1,0 +1,1496 @@
+import type { ChartSettings, TreeNode } from "../../domain";
+
+export interface StandaloneChartDocumentInput {
+  datasetName: string;
+  tree: TreeNode;
+  depthLimit: number;
+  chartSettings: ChartSettings | null;
+}
+
+export function createStandaloneChartDocument(input: StandaloneChartDocumentInput): string {
+  const payload = serializeJsonForScriptTag({
+    name: input.datasetName,
+    tree: input.tree,
+    depthLimit: input.depthLimit,
+    chartSettings: input.chartSettings,
+  });
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(input.datasetName)}</title>
+    <style>${STANDALONE_STYLE}</style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="app-frame">
+        <header class="panel row space-between">
+          <div>
+            <h1 id="chart-title">Chart</h1>
+            <div id="chart-subtitle" class="muted"></div>
+          </div>
+        </header>
+
+        <div class="panel row chart-toolbar space-between">
+          <div class="row">
+            <button id="btn-back" class="ghost">Back</button>
+            <button id="btn-forward" class="ghost">Forward</button>
+            <button id="btn-up" class="ghost">Up</button>
+            <button id="btn-reset" class="ghost">Reset</button>
+          </div>
+          <div class="row depth-wrap">
+            <span class="muted">Depth</span>
+            <input id="depth-input" type="number" min="0" max="12" />
+          </div>
+        </div>
+
+        <div id="breadcrumbs" class="panel chart-breadcrumbs"></div>
+
+        <div class="chart-layout">
+          <section class="chart-surface chart-surface-krona">
+            <svg id="chart-svg" class="chart-canvas chart-canvas-krona" viewBox="0 0 620 620" role="img">
+              <g id="chart-root" transform="translate(310 310)"></g>
+            </svg>
+            <div class="chart-hint muted">Click a segment to zoom. Hover to inspect. Click center to move up.</div>
+          </section>
+
+          <aside class="panel stack chart-details">
+            <h3 id="details-heading">Details</h3>
+            <div id="details-content" class="stack"></div>
+            <div class="stack">
+              <h3>Top Segments</h3>
+              <div id="top-segments" class="stack"></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <script id="jowna-export-data" type="application/json">${payload}</script>
+    <script>${STANDALONE_SCRIPT}</script>
+  </body>
+</html>
+`;
+}
+
+export function toStandaloneChartFileName(datasetName: string): string {
+  const normalized = datasetName
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  const base = normalized.length > 0 ? normalized : "dataset-chart";
+  return `${base}.html`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function serializeJsonForScriptTag(value: unknown): string {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
+}
+
+const STANDALONE_STYLE = `
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", sans-serif;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% 0%, #e2f4ea, #f6f8f7 45%, #eef3f1 100%);
+  color: #12251c;
+}
+
+.app-frame {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #d6dfda;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 10px rgba(15, 32, 24, 0.06);
+}
+
+.panel h1,
+.panel h2,
+.panel h3 {
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.stack {
+  display: grid;
+  gap: 8px;
+}
+
+.space-between {
+  justify-content: space-between;
+}
+
+.muted {
+  color: #52675d;
+  font-size: 0.9rem;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+input {
+  width: 100%;
+  border: 1px solid #c5d1ca;
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfdfc;
+}
+
+button {
+  border: 1px solid #1f6f4d;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #1f6f4d;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+button.ghost {
+  background: #ffffff;
+  color: #1f6f4d;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.depth-wrap {
+  min-width: 220px;
+}
+
+.chart-layout {
+  display: grid;
+  grid-template-columns: minmax(500px, 1fr) 320px;
+  gap: 16px;
+}
+
+.chart-surface {
+  background: #ffffff;
+  border: 1px solid #d6dfda;
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 620px;
+}
+
+.chart-surface-krona {
+  background:
+    radial-gradient(circle at 50% 40%, #f9fdfb 0%, #f4faf7 38%, #ebf3ee 100%),
+    #ffffff;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 600px;
+  display: block;
+}
+
+.chart-canvas-krona {
+  height: 640px;
+}
+
+.chart-breadcrumbs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.crumb {
+  border: 1px solid #bfd2c8;
+  background: #f4faf7;
+  color: #194533;
+  border-radius: 999px;
+  padding: 5px 10px;
+  line-height: 1.2;
+}
+
+.crumb.is-current {
+  border-color: #175d3f;
+  background: #1f6f4d;
+  color: #ffffff;
+}
+
+.chart-wedge {
+  cursor: pointer;
+  transition:
+    opacity 160ms ease,
+    stroke-width 180ms ease,
+    filter 160ms ease;
+}
+
+.chart-wedge:hover {
+  filter: brightness(1.07) saturate(1.06);
+}
+
+.chart-wedge.is-active {
+  filter: brightness(1.08) saturate(1.12);
+}
+
+.chart-wedge.is-focus {
+  filter: saturate(1.14);
+}
+
+.chart-wedge-label {
+  fill: #0e2b1f;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  text-rendering: geometricPrecision;
+}
+
+.chart-center-disc {
+  fill: #f4faf7;
+  stroke: #c4d8cc;
+  stroke-width: 1.4;
+  cursor: pointer;
+}
+
+.chart-center-title {
+  font-size: 13px;
+  font-weight: 700;
+  fill: #102a1f;
+}
+
+.chart-center-metric {
+  font-size: 15px;
+  font-weight: 700;
+  fill: #174936;
+}
+
+.chart-center-sub {
+  font-size: 11px;
+  fill: #4f675d;
+}
+
+.chart-hint {
+  text-align: center;
+}
+
+.chart-details {
+  max-height: 700px;
+  overflow: auto;
+}
+
+.chart-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.chart-stat {
+  border: 1px solid #d4e1db;
+  border-radius: 10px;
+  background: #f7fbf9;
+  padding: 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.key-row {
+  border: 1px solid #d0ddd6;
+  background: #ffffff;
+  color: #1c3d30;
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.key-row:hover {
+  border-color: #96b9a8;
+  background: #f4faf7;
+}
+
+.key-row.is-active {
+  border-color: #1f6f4d;
+  background: #e8f4ed;
+}
+
+.key-label {
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.key-value {
+  font-variant-numeric: tabular-nums;
+  color: #335a4a;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  margin-right: 6px;
+}
+
+@media (max-width: 980px) {
+  .chart-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-surface {
+    min-height: 480px;
+  }
+
+  .chart-canvas {
+    height: 460px;
+  }
+
+  .chart-canvas-krona {
+    height: 500px;
+  }
+
+  .chart-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+`;
+
+const STANDALONE_SCRIPT = `
+(function () {
+  var OUTER_RADIUS = 270;
+  var MAX_KEY_SEGMENTS = 10;
+  var KRONA_SATURATION = 0.5;
+  var KRONA_LIGHTNESS_BASE = 0.6;
+  var KRONA_LIGHTNESS_MAX = 0.8;
+  var KRONA_UNCLASSIFIED_COLOR = "rgb(220,220,220)";
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  var payload = readPayload();
+  if (!payload || !payload.tree || typeof payload.tree.name !== "string") {
+    showFatal("Missing chart dataset payload.");
+    return;
+  }
+
+  var dataset = payload;
+  var chartSettings = resolveChartSettings(payload.chartSettings);
+  var rootPath = [dataset.tree.name];
+  var state = {
+    focusPath: rootPath.slice(),
+    selectedPath: rootPath.slice(),
+    hoverPath: null,
+    history: [rootPath.slice()],
+    historyIndex: 0,
+    depthLimit: normalizeDepthLimit(payload.depthLimit),
+  };
+
+  var elements = {
+    title: byId("chart-title"),
+    subtitle: byId("chart-subtitle"),
+    backButton: byId("btn-back"),
+    forwardButton: byId("btn-forward"),
+    upButton: byId("btn-up"),
+    resetButton: byId("btn-reset"),
+    depthInput: byId("depth-input"),
+    breadcrumbs: byId("breadcrumbs"),
+    chartSurface: byClass("chart-surface"),
+    chartSvg: byId("chart-svg"),
+    chartRoot: byId("chart-root"),
+    detailsHeading: byId("details-heading"),
+    detailsContent: byId("details-content"),
+    topSegments: byId("top-segments"),
+  };
+
+  var datasetName = typeof dataset.name === "string" && dataset.name.length > 0 ? dataset.name : "Dataset";
+  document.title = datasetName;
+  elements.title.textContent = datasetName;
+  elements.subtitle.textContent = datasetName;
+  elements.depthInput.value = String(state.depthLimit);
+  applyChartSettings();
+
+  bindControls();
+  render();
+
+  function bindControls() {
+    elements.backButton.addEventListener("click", function () {
+      if (state.historyIndex <= 0) {
+        return;
+      }
+      state.historyIndex -= 1;
+      var path = state.history[state.historyIndex];
+      state.focusPath = path.slice();
+      state.selectedPath = path.slice();
+      state.hoverPath = null;
+      render();
+    });
+
+    elements.forwardButton.addEventListener("click", function () {
+      if (state.historyIndex >= state.history.length - 1) {
+        return;
+      }
+      state.historyIndex += 1;
+      var path = state.history[state.historyIndex];
+      state.focusPath = path.slice();
+      state.selectedPath = path.slice();
+      state.hoverPath = null;
+      render();
+    });
+
+    elements.upButton.addEventListener("click", function () {
+      var focusPath = state.focusPath && state.focusPath.length > 0 ? state.focusPath : rootPath;
+      if (focusPath.length <= 1) {
+        return;
+      }
+      setFocusPath(focusPath.slice(0, -1), true);
+    });
+
+    elements.resetButton.addEventListener("click", function () {
+      state.focusPath = rootPath.slice();
+      state.selectedPath = rootPath.slice();
+      state.hoverPath = null;
+      state.history = [rootPath.slice()];
+      state.historyIndex = 0;
+      render();
+    });
+
+    elements.depthInput.addEventListener("input", function () {
+      state.depthLimit = normalizeDepthLimit(elements.depthInput.value);
+      render();
+    });
+  }
+
+  function render() {
+    var layout = computeLayout(dataset.tree, state.focusPath, state.depthLimit);
+    var kronaColors = buildKronaColorMap(layout);
+
+    var resolvedFocusPath = state.focusPath && state.focusPath.length > 0 ? state.focusPath : rootPath;
+    var activePath = state.hoverPath || state.selectedPath || resolvedFocusPath;
+    var activeNode = findNodeByPath(dataset.tree, activePath);
+    var activeLayoutNode = findLayoutNodeByPath(layout.nodes, activePath);
+
+    var totalMagnitude = layout.totalMagnitude;
+    var activeMagnitude = activeLayoutNode ? activeLayoutNode.magnitude : activeNode ? activeNode.magnitude : 0;
+    var activeShare = totalMagnitude > 0 ? (activeMagnitude / totalMagnitude) * 100 : 0;
+    var maxDepth = maxNodeDepth(layout.nodes);
+    var radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
+    var parentFocusPath = resolvedFocusPath.length > 1 ? resolvedFocusPath.slice(0, -1) : null;
+
+    renderToolbar(parentFocusPath);
+    renderBreadcrumbs(resolvedFocusPath);
+    renderSvg(layout, kronaColors, activePath, resolvedFocusPath, activeNode, activeMagnitude, activeShare, radiusScale, maxDepth, parentFocusPath);
+    renderDetails(activeNode, activePath, activeMagnitude, activeShare);
+    renderTopSegments(layout, totalMagnitude, activePath, kronaColors);
+  }
+
+  function applyChartSettings() {
+    document.body.style.fontFamily = resolveFontFamily(chartSettings.fontFamily);
+
+    if (elements.chartSurface) {
+      elements.chartSurface.style.background = chartSettings.background;
+      elements.chartSurface.style.borderWidth = String(chartSettings.borderWidth) + "px";
+      elements.chartSurface.style.borderColor = chartSettings.borderColor;
+    }
+
+    if (elements.chartSvg) {
+      if (typeof chartSettings.width === "number" && chartSettings.width > 0) {
+        elements.chartSvg.style.width = String(chartSettings.width) + "px";
+      }
+      if (typeof chartSettings.height === "number" && chartSettings.height > 0) {
+        elements.chartSvg.style.height = String(chartSettings.height) + "px";
+      }
+    }
+  }
+
+  function renderToolbar(parentFocusPath) {
+    elements.backButton.disabled = state.historyIndex <= 0;
+    elements.forwardButton.disabled = state.historyIndex >= state.history.length - 1;
+    elements.upButton.disabled = !parentFocusPath;
+  }
+
+  function renderBreadcrumbs(focusPath) {
+    clearElement(elements.breadcrumbs);
+    var focusLabel = document.createElement("span");
+    focusLabel.className = "muted";
+    focusLabel.textContent = "Focus";
+    elements.breadcrumbs.appendChild(focusLabel);
+
+    for (var index = 0; index < focusPath.length; index += 1) {
+      var crumbPath = focusPath.slice(0, index + 1);
+      var button = document.createElement("button");
+      button.className = "crumb" + (index === focusPath.length - 1 ? " is-current" : "");
+      button.textContent = focusPath[index];
+      button.addEventListener("click", createFocusHandler(crumbPath));
+      elements.breadcrumbs.appendChild(button);
+    }
+  }
+
+  function renderSvg(
+    layout,
+    kronaColors,
+    activePath,
+    resolvedFocusPath,
+    activeNode,
+    activeMagnitude,
+    activeShare,
+    radiusScale,
+    maxDepth,
+    parentFocusPath
+  ) {
+    clearElement(elements.chartRoot);
+
+    var nodes = layout.nodes;
+    for (var index = 0; index < nodes.length; index += 1) {
+      var node = nodes[index];
+      if (node.depth <= 0) {
+        continue;
+      }
+
+      var innerRadius = radiusScale(node.depth - 1);
+      var outerRadius = radiusScale(node.depth);
+      var pathData = arcPath(innerRadius, outerRadius, node.startAngle, node.endAngle);
+      if (!pathData) {
+        continue;
+      }
+
+      var isActive = activePath ? pathEquals(node.path, activePath) : false;
+      var isFocused = resolvedFocusPath ? pathEquals(node.path, resolvedFocusPath) : false;
+      var fill = kronaColors.get(pathKey(node.path)) || KRONA_UNCLASSIFIED_COLOR;
+
+      var pathElement = createSvgElement("path");
+      pathElement.setAttribute("class", "chart-wedge" + (isActive ? " is-active" : "") + (isFocused ? " is-focus" : ""));
+      pathElement.setAttribute("d", pathData);
+      pathElement.setAttribute("fill", fill);
+      pathElement.setAttribute("stroke", isActive ? "#062d1e" : chartSettings.wedgeStrokeColor);
+      pathElement.setAttribute(
+        "stroke-width",
+        isActive ? "2.2" : String(Math.max(0.4, chartSettings.wedgeStrokeWidth))
+      );
+      pathElement.setAttribute("opacity", state.hoverPath ? (isActive ? "1" : "0.42") : (isFocused ? "1" : "0.92"));
+
+      pathElement.addEventListener("mouseenter", createHoverHandler(node.path));
+      pathElement.addEventListener("mouseleave", clearHoverHandler);
+      pathElement.addEventListener("click", createFocusHandler(node.path));
+      pathElement.addEventListener("pointerdown", createFocusHandler(node.path));
+
+      var title = createSvgElement("title");
+      title.textContent = node.path.join(" / ") + ": " + formatNumber(node.magnitude);
+      pathElement.appendChild(title);
+      elements.chartRoot.appendChild(pathElement);
+    }
+
+    for (var labelIndex = 0; labelIndex < nodes.length; labelIndex += 1) {
+      var labelNode = nodes[labelIndex];
+      if (labelNode.depth <= 0) {
+        continue;
+      }
+      var labelInnerRadius = radiusScale(labelNode.depth - 1);
+      var labelOuterRadius = radiusScale(labelNode.depth);
+      var label = createWedgeLabel(labelNode, labelInnerRadius, labelOuterRadius, layout.totalMagnitude, maxDepth);
+      if (!label) {
+        continue;
+      }
+
+      var text = createSvgElement("text");
+      text.setAttribute("class", "chart-wedge-label");
+      text.setAttribute("x", String(label.x));
+      text.setAttribute("y", String(label.y));
+      text.setAttribute("text-anchor", label.anchor);
+      text.setAttribute("dominant-baseline", "middle");
+      text.setAttribute("transform", "rotate(" + label.rotate + " " + label.x + " " + label.y + ")");
+      text.setAttribute("font-family", chartSettings.fontFamily);
+      text.setAttribute("font-size", String(Math.max(8, chartSettings.fontSizePx)));
+      text.textContent = label.text;
+      elements.chartRoot.appendChild(text);
+    }
+
+    var centerDisc = createSvgElement("circle");
+    centerDisc.setAttribute("r", String(radiusScale(0) + 42));
+    centerDisc.setAttribute("class", "chart-center-disc");
+    centerDisc.addEventListener("click", function () {
+      if (parentFocusPath) {
+        setFocusPath(parentFocusPath, true);
+      } else {
+        state.focusPath = rootPath.slice();
+        state.selectedPath = rootPath.slice();
+        state.hoverPath = null;
+        render();
+      }
+    });
+    elements.chartRoot.appendChild(centerDisc);
+
+    var centerTitle = createSvgElement("text");
+    centerTitle.setAttribute("x", "0");
+    centerTitle.setAttribute("y", "-18");
+    centerTitle.setAttribute("text-anchor", "middle");
+    centerTitle.setAttribute("class", "chart-center-title");
+    centerTitle.textContent = activeNode ? activeNode.name : (resolvedFocusPath[resolvedFocusPath.length - 1] || "Root");
+    elements.chartRoot.appendChild(centerTitle);
+
+    var centerMetric = createSvgElement("text");
+    centerMetric.setAttribute("x", "0");
+    centerMetric.setAttribute("y", "2");
+    centerMetric.setAttribute("text-anchor", "middle");
+    centerMetric.setAttribute("class", "chart-center-metric");
+    centerMetric.textContent = formatNumber(activeMagnitude);
+    elements.chartRoot.appendChild(centerMetric);
+
+    var centerSub = createSvgElement("text");
+    centerSub.setAttribute("x", "0");
+    centerSub.setAttribute("y", "22");
+    centerSub.setAttribute("text-anchor", "middle");
+    centerSub.setAttribute("class", "chart-center-sub");
+    centerSub.textContent = activeShare.toFixed(1) + "% of view";
+    elements.chartRoot.appendChild(centerSub);
+  }
+
+  function renderDetails(activeNode, activePath, activeMagnitude, activeShare) {
+    elements.detailsHeading.textContent = state.hoverPath ? "Hover Details" : "Details";
+    clearElement(elements.detailsContent);
+
+    if (!activeNode) {
+      appendText(elements.detailsContent, "div", "muted", "Hover or click a wedge to inspect node details.");
+      return;
+    }
+
+    var titleBlock = document.createElement("div");
+    var strong = document.createElement("strong");
+    strong.textContent = activeNode.name;
+    titleBlock.appendChild(strong);
+    elements.detailsContent.appendChild(titleBlock);
+
+    appendText(elements.detailsContent, "div", "muted", "path: " + (activePath ? activePath.join(" / ") : ""));
+
+    var stats = document.createElement("div");
+    stats.className = "chart-stats";
+    stats.appendChild(createStat("Magnitude", formatNumber(activeMagnitude)));
+    stats.appendChild(createStat("Share", activeShare.toFixed(1) + "%"));
+    stats.appendChild(createStat("Children", String(activeNode.children ? activeNode.children.length : 0)));
+    elements.detailsContent.appendChild(stats);
+
+    if (activeNode.description) {
+      appendText(elements.detailsContent, "div", "", activeNode.description);
+    }
+
+    if (activeNode.url) {
+      var urlBlock = document.createElement("div");
+      var link = document.createElement("a");
+      link.href = activeNode.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = activeNode.url;
+      urlBlock.appendChild(link);
+      elements.detailsContent.appendChild(urlBlock);
+    }
+
+    var attributes = activeNode.attributes || {};
+    var attributeKeys = Object.keys(attributes);
+    if (attributeKeys.length > 0) {
+      var attributeContainer = document.createElement("div");
+      attributeContainer.className = "stack";
+      for (var index = 0; index < attributeKeys.length; index += 1) {
+        var key = attributeKeys[index];
+        var row = document.createElement("div");
+        row.className = "muted";
+        var keyStrong = document.createElement("strong");
+        keyStrong.textContent = key + ":";
+        row.appendChild(keyStrong);
+        row.appendChild(document.createTextNode(" " + String(attributes[key])));
+        attributeContainer.appendChild(row);
+      }
+      elements.detailsContent.appendChild(attributeContainer);
+    }
+  }
+
+  function renderTopSegments(layout, totalMagnitude, activePath, kronaColors) {
+    clearElement(elements.topSegments);
+
+    var topLevel = layout.nodes
+      .filter(function (node) {
+        return node.depth === 1;
+      })
+      .sort(function (left, right) {
+        if (right.magnitude !== left.magnitude) {
+          return right.magnitude - left.magnitude;
+        }
+        return left.name.localeCompare(right.name);
+      });
+
+    if (topLevel.length === 0) {
+      appendText(elements.topSegments, "div", "muted", "No segments in the current view.");
+      return;
+    }
+
+    var visible = topLevel.slice(0, MAX_KEY_SEGMENTS);
+    for (var index = 0; index < visible.length; index += 1) {
+      var node = visible[index];
+      var share = totalMagnitude > 0 ? (node.magnitude / totalMagnitude) * 100 : 0;
+      var isActive = activePath ? pathEquals(node.path, activePath) : false;
+
+      var keyButton = document.createElement("button");
+      keyButton.className = "key-row" + (isActive ? " is-active" : "");
+      keyButton.addEventListener("mouseenter", createHoverHandler(node.path));
+      keyButton.addEventListener("mouseleave", clearHoverHandler);
+      keyButton.addEventListener("click", createFocusHandler(node.path));
+      keyButton.addEventListener("pointerdown", createFocusHandler(node.path));
+
+      var dot = document.createElement("span");
+      dot.className = "legend-dot";
+      dot.style.background = kronaColors.get(pathKey(node.path)) || KRONA_UNCLASSIFIED_COLOR;
+      keyButton.appendChild(dot);
+
+      var label = document.createElement("span");
+      label.className = "key-label";
+      label.textContent = node.name;
+      keyButton.appendChild(label);
+
+      var value = document.createElement("span");
+      value.className = "key-value";
+      value.textContent = share.toFixed(1) + "%";
+      keyButton.appendChild(value);
+
+      elements.topSegments.appendChild(keyButton);
+    }
+
+    var hidden = topLevel.length - visible.length;
+    if (hidden > 0) {
+      appendText(elements.topSegments, "div", "muted", "+ " + hidden + " more in this level");
+    }
+  }
+
+  function createStat(label, value) {
+    var stat = document.createElement("div");
+    stat.className = "chart-stat";
+    appendText(stat, "span", "muted", label);
+    appendText(stat, "strong", "", value);
+    return stat;
+  }
+
+  function createHoverHandler(path) {
+    return function () {
+      state.hoverPath = path.slice();
+      render();
+    };
+  }
+
+  function clearHoverHandler() {
+    if (!state.hoverPath) {
+      return;
+    }
+    state.hoverPath = null;
+    render();
+  }
+
+  function createFocusHandler(path) {
+    return function () {
+      setFocusPath(path, true);
+    };
+  }
+
+  function setFocusPath(path, trackHistory) {
+    var normalized = normalizePath(path);
+    if (normalized.length === 0) {
+      return;
+    }
+    var focusUnchanged = state.focusPath && pathEquals(state.focusPath, normalized);
+
+    state.focusPath = normalized;
+    state.selectedPath = normalized;
+    state.hoverPath = null;
+
+    if (trackHistory && !focusUnchanged) {
+      var historyPrefix = state.history.slice(0, state.historyIndex + 1);
+      historyPrefix.push(normalized.slice());
+      state.history = historyPrefix;
+      state.historyIndex = state.history.length - 1;
+    }
+
+    render();
+  }
+
+  function normalizePath(path) {
+    if (!Array.isArray(path)) {
+      return rootPath.slice();
+    }
+    var normalized = path
+      .map(function (segment) {
+        return String(segment).trim();
+      })
+      .filter(function (segment) {
+        return segment.length > 0;
+      });
+
+    if (normalized.length === 0 || normalized[0] !== rootPath[0]) {
+      return rootPath.slice();
+    }
+    return normalized;
+  }
+
+  function computeLayout(root, focusedPath, depthLimitInput) {
+    var normalizedFocusPath = normalizeFocusedPath(root, focusedPath);
+    var focusedRoot = resolveFocusedNode(root, normalizedFocusPath) || root;
+    var pathPrefix = normalizedFocusPath ? normalizedFocusPath.slice(0, -1) : [];
+    var totalMagnitude = computeEffectiveMagnitude(focusedRoot);
+    var depthLimit = depthLimitInput <= 0 ? null : depthLimitInput;
+    var nodes = flattenForLayout({
+      node: focusedRoot,
+      rootMagnitude: totalMagnitude,
+      pathPrefix: pathPrefix,
+      depth: 0,
+      startAngle: 0,
+      depthLimit: depthLimit,
+    });
+
+    return {
+      nodes: nodes,
+      totalMagnitude: totalMagnitude,
+    };
+  }
+
+  function flattenForLayout(args) {
+    var currentPath = args.pathPrefix.concat([args.node.name]);
+    var nodeMagnitude = computeEffectiveMagnitude(args.node);
+    var angleSpan = args.rootMagnitude === 0 ? 0 : (nodeMagnitude / args.rootMagnitude) * Math.PI * 2;
+
+    var currentNode = {
+      path: currentPath,
+      name: args.node.name,
+      depth: args.depth,
+      magnitude: nodeMagnitude,
+      startAngle: args.startAngle,
+      endAngle: args.startAngle + angleSpan,
+    };
+
+    var nodes = [currentNode];
+    if (
+      !Array.isArray(args.node.children) ||
+      args.node.children.length === 0 ||
+      (typeof args.depthLimit === "number" && args.depth >= args.depthLimit)
+    ) {
+      return nodes;
+    }
+
+    var sortedChildren = args.node.children
+      .map(function (child) {
+        return {
+          child: child,
+          magnitude: computeEffectiveMagnitude(child),
+        };
+      })
+      .filter(function (entry) {
+        return entry.magnitude > 0;
+      })
+      .sort(function (left, right) {
+        if (right.magnitude !== left.magnitude) {
+          return right.magnitude - left.magnitude;
+        }
+        return left.child.name.localeCompare(right.child.name);
+      });
+
+    var childrenTotalMagnitude = sortedChildren.reduce(function (sum, entry) {
+      return sum + entry.magnitude;
+    }, 0);
+
+    var childStartAngle = args.startAngle;
+    for (var index = 0; index < sortedChildren.length; index += 1) {
+      var entry = sortedChildren[index];
+      var childAngleSpan = childrenTotalMagnitude === 0 ? 0 : (entry.magnitude / childrenTotalMagnitude) * angleSpan;
+      var childNodes = flattenForLayout({
+        node: entry.child,
+        rootMagnitude: args.rootMagnitude,
+        pathPrefix: currentPath,
+        depth: args.depth + 1,
+        startAngle: childStartAngle,
+        depthLimit: args.depthLimit,
+      });
+      nodes = nodes.concat(childNodes);
+      childStartAngle += childAngleSpan;
+    }
+
+    return nodes;
+  }
+
+  function computeEffectiveMagnitude(node) {
+    var nodeMagnitude = normalizeMagnitude(node.magnitude);
+    if (!Array.isArray(node.children) || node.children.length === 0) {
+      return nodeMagnitude;
+    }
+    var childrenMagnitude = node.children.reduce(function (sum, child) {
+      return sum + computeEffectiveMagnitude(child);
+    }, 0);
+    return Math.max(nodeMagnitude, childrenMagnitude);
+  }
+
+  function normalizeMagnitude(value) {
+    var numberValue = Number(value);
+    if (!Number.isFinite(numberValue) || numberValue <= 0) {
+      return 0;
+    }
+    return numberValue;
+  }
+
+  function resolveFocusedNode(root, focusedPath) {
+    if (!focusedPath || focusedPath.length === 0) {
+      return root;
+    }
+    var head = focusedPath[0];
+    if (head !== root.name) {
+      return null;
+    }
+    var cursor = root;
+    for (var index = 1; index < focusedPath.length; index += 1) {
+      var segment = focusedPath[index];
+      var next = Array.isArray(cursor.children)
+        ? cursor.children.find(function (child) {
+            return child.name === segment;
+          })
+        : null;
+      if (!next) {
+        return null;
+      }
+      cursor = next;
+    }
+    return cursor;
+  }
+
+  function normalizeFocusedPath(root, focusedPath) {
+    if (!Array.isArray(focusedPath) || focusedPath.length === 0) {
+      return null;
+    }
+    var normalized = focusedPath
+      .map(function (segment) {
+        return String(segment).trim();
+      })
+      .filter(function (segment) {
+        return segment.length > 0;
+      });
+
+    if (normalized.length === 0 || normalized[0] !== root.name) {
+      return null;
+    }
+    return normalized;
+  }
+
+  function findLayoutNodeByPath(nodes, path) {
+    if (!path) {
+      return null;
+    }
+    for (var index = 0; index < nodes.length; index += 1) {
+      if (pathEquals(nodes[index].path, path)) {
+        return nodes[index];
+      }
+    }
+    return null;
+  }
+
+  function findNodeByPath(root, path) {
+    if (!path || path.length === 0) {
+      return root;
+    }
+
+    if (path[0] !== root.name) {
+      return null;
+    }
+
+    var cursor = root;
+    for (var index = 1; index < path.length; index += 1) {
+      var segment = path[index];
+      var next = Array.isArray(cursor.children)
+        ? cursor.children.find(function (child) {
+            return child.name === segment;
+          })
+        : null;
+      if (!next) {
+        return null;
+      }
+      cursor = next;
+    }
+
+    return cursor;
+  }
+
+  function arcPath(innerRadius, outerRadius, startAngle, endAngle) {
+    if (endAngle <= startAngle) {
+      return "";
+    }
+
+    var largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+    var outerStart = polarPoint(outerRadius, startAngle);
+    var outerEnd = polarPoint(outerRadius, endAngle);
+
+    if (innerRadius <= 0) {
+      return (
+        "M " +
+        outerStart.x +
+        " " +
+        outerStart.y +
+        " A " +
+        outerRadius +
+        " " +
+        outerRadius +
+        " 0 " +
+        largeArc +
+        " 1 " +
+        outerEnd.x +
+        " " +
+        outerEnd.y +
+        " L 0 0 Z"
+      );
+    }
+
+    var innerEnd = polarPoint(innerRadius, endAngle);
+    var innerStart = polarPoint(innerRadius, startAngle);
+
+    return (
+      "M " +
+      outerStart.x +
+      " " +
+      outerStart.y +
+      " A " +
+      outerRadius +
+      " " +
+      outerRadius +
+      " 0 " +
+      largeArc +
+      " 1 " +
+      outerEnd.x +
+      " " +
+      outerEnd.y +
+      " L " +
+      innerEnd.x +
+      " " +
+      innerEnd.y +
+      " A " +
+      innerRadius +
+      " " +
+      innerRadius +
+      " 0 " +
+      largeArc +
+      " 0 " +
+      innerStart.x +
+      " " +
+      innerStart.y +
+      " Z"
+    );
+  }
+
+  function polarPoint(radius, angle) {
+    return {
+      x: Math.cos(angle - Math.PI / 2) * radius,
+      y: Math.sin(angle - Math.PI / 2) * radius,
+    };
+  }
+
+  function createRadiusScale(maxDepth, outerRadius) {
+    return function (depth) {
+      if (depth <= 0 || maxDepth <= 0) {
+        return 0;
+      }
+      var normalized = depth / maxDepth;
+      return Math.pow(normalized, 0.86) * outerRadius;
+    };
+  }
+
+  function createWedgeLabel(node, innerRadius, outerRadius, totalMagnitude, maxDepth) {
+    var isOuterRing = maxDepth <= 1 || node.depth === maxDepth;
+    var angleSpan = node.endAngle - node.startAngle;
+    var ringThickness = outerRadius - innerRadius;
+    var radius = innerRadius + ringThickness * 0.56;
+    var tangentialSpan = radius * angleSpan;
+
+    var minAngleSpan = isOuterRing ? 0.045 : 0.09;
+    var minRingThickness = isOuterRing ? 12 : 16;
+    var minTangentialSpan = isOuterRing ? 12 : 42;
+
+    if (
+      angleSpan < minAngleSpan ||
+      ringThickness < minRingThickness ||
+      tangentialSpan < minTangentialSpan
+    ) {
+      return null;
+    }
+
+    var percentage = totalMagnitude > 0 ? (node.magnitude / totalMagnitude) * 100 : 0;
+    var midAngle = (node.startAngle + node.endAngle) / 2;
+    var point = polarPoint(radius, midAngle);
+
+    var availableTextLength = isOuterRing
+      ? Math.max(0, ringThickness - 6)
+      : Math.max(0, tangentialSpan - 4);
+    var maxChars = Math.max(isOuterRing ? 4 : 8, Math.floor(availableTextLength / 7.2));
+    var text = ellipsize(node.name + " " + percentage.toFixed(1) + "%", maxChars);
+    var baseRotation = isOuterRing ? (midAngle * 180) / Math.PI - 90 : (midAngle * 180) / Math.PI;
+    var normalizedRotation = normalizeDegrees(baseRotation);
+    var flip = normalizedRotation > 90 || normalizedRotation < -90;
+    var rotate = flip ? normalizedRotation + 180 : normalizedRotation;
+
+    return {
+      text: text,
+      x: point.x,
+      y: point.y,
+      rotate: rotate,
+      anchor: isOuterRing ? (flip ? "end" : "start") : "middle",
+    };
+  }
+
+  function ellipsize(value, maxLength) {
+    if (value.length <= maxLength) {
+      return value;
+    }
+    return value.slice(0, Math.max(0, maxLength - 3)) + "...";
+  }
+
+  function buildKronaColorMap(layout) {
+    var colors = new Map();
+    if (!layout || !layout.nodes || layout.nodes.length === 0) {
+      return colors;
+    }
+
+    var root = layout.nodes.find(function (node) {
+      return node.depth === 0;
+    }) || layout.nodes[0];
+    var childrenByParent = new Map();
+    for (var index = 0; index < layout.nodes.length; index += 1) {
+      var node = layout.nodes[index];
+      if (node.depth === 0) {
+        continue;
+      }
+      var parent = pathKey(node.path.slice(0, -1));
+      var children = childrenByParent.get(parent);
+      if (children) {
+        children.push(node);
+      } else {
+        childrenByParent.set(parent, [node]);
+      }
+    }
+
+    childrenByParent.forEach(function (children) {
+      children.sort(function (left, right) {
+        if (left.startAngle !== right.startAngle) {
+          return left.startAngle - right.startAngle;
+        }
+        return left.endAngle - right.endAngle;
+      });
+    });
+
+    var maxDepth = maxNodeDepth(layout.nodes);
+    var depthNormalizer = maxDepth > 8 ? 8 : Math.max(maxDepth, 1);
+    var lightnessFactor = (KRONA_LIGHTNESS_MAX - KRONA_LIGHTNESS_BASE) / depthNormalizer;
+
+    function assignColor(node, hueMin, hueMax) {
+      var boundedHueMax = hueMax;
+      if (boundedHueMax - hueMin > 1 / 12) {
+        boundedHueMax = hueMin + 1 / 12;
+      }
+
+      if (node.depth > 0) {
+        if (node.magnitude <= 0) {
+          colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
+        } else {
+          var lightness = Math.min(
+            KRONA_LIGHTNESS_MAX,
+            KRONA_LIGHTNESS_BASE + (node.depth - 1) * lightnessFactor
+          );
+          var rgb = hslToRgb(hueMin, KRONA_SATURATION, lightness);
+          colors.set(pathKey(node.path), rgbText(rgb.r, rgb.g, rgb.b));
+        }
+      }
+
+      var children = childrenByParent.get(pathKey(node.path)) || [];
+      if (children.length === 0) {
+        return;
+      }
+
+      for (var childIndex = 0; childIndex < children.length; childIndex += 1) {
+        var child = children[childIndex];
+        var childHueMin;
+        var childHueMax;
+
+        if (node.depth === 0) {
+          if (children.length > 6) {
+            childHueMin = (1 - Math.pow(1 - childIndex / children.length, 1.4)) * 0.95;
+            childHueMax = (1 - Math.pow(1 - (childIndex + 0.55) / children.length, 1.4)) * 0.95;
+          } else {
+            childHueMin = childIndex / children.length;
+            childHueMax = (childIndex + 0.55) / children.length;
+          }
+        } else {
+          childHueMin = lerp(child.startAngle, node.startAngle, node.endAngle, hueMin, boundedHueMax);
+          childHueMax = lerp(
+            child.startAngle + (child.endAngle - child.startAngle) * 0.99,
+            node.startAngle,
+            node.endAngle,
+            hueMin,
+            boundedHueMax
+          );
+        }
+
+        assignColor(child, childHueMin, childHueMax);
+      }
+    }
+
+    assignColor(root, 0, 1);
+    return colors;
+  }
+
+  function lerp(value, rangeStart, rangeEnd, outputStart, outputEnd) {
+    if (rangeEnd === rangeStart) {
+      return outputStart;
+    }
+    return outputStart + ((value - rangeStart) / (rangeEnd - rangeStart)) * (outputEnd - outputStart);
+  }
+
+  function rgbText(red, green, blue) {
+    return "rgb(" + red + "," + green + "," + blue + ")";
+  }
+
+  function hslToRgb(hue, saturation, lightness) {
+    if (saturation === 0) {
+      var value = Math.floor(lightness * 255);
+      return { r: value, g: value, b: value };
+    }
+
+    var m2 = lightness <= 0.5
+      ? lightness * (saturation + 1)
+      : lightness + saturation - lightness * saturation;
+    var m1 = lightness * 2 - m2;
+
+    return {
+      r: Math.floor(hueToRgb(m1, m2, hue + 1 / 3)),
+      g: Math.floor(hueToRgb(m1, m2, hue)),
+      b: Math.floor(hueToRgb(m1, m2, hue - 1 / 3)),
+    };
+  }
+
+  function hueToRgb(m1, m2, hue) {
+    var normalizedHue = hue;
+    while (normalizedHue < 0) {
+      normalizedHue += 1;
+    }
+    while (normalizedHue > 1) {
+      normalizedHue -= 1;
+    }
+
+    var value;
+    if (6 * normalizedHue < 1) {
+      value = m1 + (m2 - m1) * normalizedHue * 6;
+    } else if (2 * normalizedHue < 1) {
+      value = m2;
+    } else if (3 * normalizedHue < 2) {
+      value = m1 + (m2 - m1) * (2 / 3 - normalizedHue) * 6;
+    } else {
+      value = m1;
+    }
+
+    return value * 255;
+  }
+
+  function maxNodeDepth(nodes) {
+    var max = 0;
+    for (var index = 0; index < nodes.length; index += 1) {
+      if (nodes[index].depth > max) {
+        max = nodes[index].depth;
+      }
+    }
+    return max;
+  }
+
+  function pathEquals(left, right) {
+    if (left.length !== right.length) {
+      return false;
+    }
+    for (var index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function pathKey(path) {
+    return path.join("/");
+  }
+
+  function normalizeDegrees(angle) {
+    var normalized = angle;
+    while (normalized <= -180) {
+      normalized += 360;
+    }
+    while (normalized > 180) {
+      normalized -= 360;
+    }
+    return normalized;
+  }
+
+  function resolveChartSettings(raw) {
+    var defaults = {
+      background: "#f6f8f7",
+      borderWidth: 0,
+      borderColor: "#b7c2bc",
+      wedgeStrokeWidth: 1,
+      wedgeStrokeColor: "#ffffff",
+      fontFamily: "IBM Plex Sans",
+      fontSizePx: 12,
+      width: "fit",
+      height: "fit",
+      colorScheme: ["#0f6b48", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51"],
+    };
+
+    if (!raw || typeof raw !== "object") {
+      return defaults;
+    }
+
+    var width = raw.width;
+    var height = raw.height;
+    var normalizedWidth =
+      typeof width === "number" && Number.isFinite(width) && width > 0 ? width : "fit";
+    var normalizedHeight =
+      typeof height === "number" && Number.isFinite(height) && height > 0 ? height : "fit";
+
+    return {
+      background: typeof raw.background === "string" ? raw.background : defaults.background,
+      borderWidth:
+        typeof raw.borderWidth === "number" && Number.isFinite(raw.borderWidth)
+          ? Math.max(0, raw.borderWidth)
+          : defaults.borderWidth,
+      borderColor: typeof raw.borderColor === "string" ? raw.borderColor : defaults.borderColor,
+      wedgeStrokeWidth:
+        typeof raw.wedgeStrokeWidth === "number" && Number.isFinite(raw.wedgeStrokeWidth)
+          ? Math.max(0.4, raw.wedgeStrokeWidth)
+          : defaults.wedgeStrokeWidth,
+      wedgeStrokeColor:
+        typeof raw.wedgeStrokeColor === "string"
+          ? raw.wedgeStrokeColor
+          : defaults.wedgeStrokeColor,
+      fontFamily: typeof raw.fontFamily === "string" ? raw.fontFamily : defaults.fontFamily,
+      fontSizePx:
+        typeof raw.fontSizePx === "number" && Number.isFinite(raw.fontSizePx)
+          ? Math.max(8, raw.fontSizePx)
+          : defaults.fontSizePx,
+      width: normalizedWidth,
+      height: normalizedHeight,
+      colorScheme: Array.isArray(raw.colorScheme) ? raw.colorScheme : defaults.colorScheme,
+    };
+  }
+
+  function resolveFontFamily(fontFamily) {
+    if (typeof fontFamily !== "string" || fontFamily.trim().length === 0) {
+      return "IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+    }
+    if (fontFamily.includes(",")) {
+      return fontFamily;
+    }
+    return (
+      fontFamily +
+      ", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+    );
+  }
+
+  function normalizeDepthLimit(value) {
+    var parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
+    if (parsed < 0) {
+      return 0;
+    }
+    if (parsed > 12) {
+      return 12;
+    }
+    return Math.floor(parsed);
+  }
+
+  function byId(id) {
+    var element = document.getElementById(id);
+    if (!element) {
+      throw new Error("Missing element #" + id);
+    }
+    return element;
+  }
+
+  function byClass(className) {
+    var element = document.querySelector("." + className);
+    if (!element) {
+      throw new Error("Missing element ." + className);
+    }
+    return element;
+  }
+
+  function clearElement(element) {
+    while (element.firstChild) {
+      element.removeChild(element.firstChild);
+    }
+  }
+
+  function createSvgElement(tagName) {
+    return document.createElementNS(SVG_NS, tagName);
+  }
+
+  function appendText(container, tagName, className, value) {
+    var element = document.createElement(tagName);
+    if (className) {
+      element.className = className;
+    }
+    element.textContent = value;
+    container.appendChild(element);
+  }
+
+  function formatNumber(value) {
+    return Number(value || 0).toLocaleString();
+  }
+
+  function readPayload() {
+    var script = document.getElementById("jowna-export-data");
+    if (!script || !script.textContent) {
+      return null;
+    }
+    try {
+      return JSON.parse(script.textContent);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function showFatal(message) {
+    document.body.innerHTML =
+      '<div style="padding:24px;font-family:IBM Plex Sans,sans-serif"><h1>Jowna Export</h1><p>' +
+      message +
+      "</p></div>";
+  }
+})();
+`;

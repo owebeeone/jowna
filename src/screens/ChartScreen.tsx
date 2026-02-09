@@ -1,7 +1,12 @@
 import { useGrip, useNumberGrip } from "@owebeeone/grip-react";
 import { useMemo } from "react";
 import type { TreeNode } from "../domain";
-import type { ChartLayoutNode, ChartLayoutResult } from "../features/chart";
+import {
+  createStandaloneChartDocument,
+  toStandaloneChartFileName,
+  type ChartLayoutNode,
+  type ChartLayoutResult,
+} from "../features/chart";
 import {
   ACTIVE_DATASET,
   CHART_DEPTH_LIMIT,
@@ -33,6 +38,7 @@ export function ChartScreen() {
   const history = useGrip(CHART_HISTORY) ?? [];
   const historyIndex = useGrip(CHART_HISTORY_INDEX) ?? -1;
   const chartSettings = useGrip(CHART_SETTINGS_STATE);
+  const depthLimit = useGrip(CHART_DEPTH_LIMIT) ?? 0;
 
   const depthBind = useNumberGrip(CHART_DEPTH_LIMIT, CHART_DEPTH_LIMIT_TAP, {
     emptyAs: 0,
@@ -71,6 +77,20 @@ export function ChartScreen() {
   const parentFocusPath =
     resolvedFocusPath && resolvedFocusPath.length > 1 ? resolvedFocusPath.slice(0, -1) : null;
 
+  const onDownloadHtml = () => {
+    if (!dataset) {
+      return;
+    }
+
+    const html = createStandaloneChartDocument({
+      datasetName: dataset.name,
+      tree: dataset.tree,
+      depthLimit,
+      chartSettings: chartSettings ?? null,
+    });
+    downloadHtmlFile(toStandaloneChartFileName(dataset.name), html);
+  };
+
   return (
     <div className="app-shell">
       <div className="app-frame">
@@ -80,6 +100,9 @@ export function ChartScreen() {
             <div className="muted">{dataset?.name ?? "No active dataset"}</div>
           </div>
           <div className="row">
+            <button className="ghost" onClick={onDownloadHtml} disabled={!dataset}>
+              Download HTML
+            </button>
             <button className="ghost" onClick={() => actions?.backToSelection()}>
               Back to Selection
             </button>
@@ -342,6 +365,19 @@ export function ChartScreen() {
       </div>
     </div>
   );
+}
+
+function downloadHtmlFile(fileName: string, html: string): void {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  anchor.click();
+
+  URL.revokeObjectURL(url);
 }
 
 function findNodeByPath(root: TreeNode, path: string[] | null): TreeNode | null {

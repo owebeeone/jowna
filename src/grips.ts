@@ -22,6 +22,7 @@ export interface JownaActions {
   createProject: (name: string) => Promise<void>;
   copyProject: (projectId: string, nextName?: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
+  renameDataset: (datasetId: string, nextName: string) => Promise<void>;
   openProject: (projectId: string) => Promise<void>;
   parsePreview: () => Promise<void>;
   applyImport: (datasetName: string) => Promise<void>;
@@ -192,6 +193,9 @@ export const IMPORT_DATASET_NAME_TAP = defineGrip<AtomTapHandle<string>>("Import
 
 export const PREVIEW_FILTER = defineGrip<string>("PreviewFilter", "");
 export const PREVIEW_FILTER_TAP = defineGrip<AtomTapHandle<string>>("PreviewFilter.Tap");
+
+export const IMPORT_POPOVER_OPEN = defineGrip<boolean>("ImportPopoverOpen", false);
+export const IMPORT_POPOVER_OPEN_TAP = defineGrip<AtomTapHandle<boolean>>("ImportPopoverOpen.Tap");
 
 // Chart
 export const CHART_SETTINGS_STATE = defineGrip<ChartSettings>(

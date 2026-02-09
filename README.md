@@ -1,21 +1,33 @@
-# Jowna
+# Jowna - data visualizer
 
-This workspace currently contains interface-first scaffolding plus initial Step 4 implementations:
+Project link: <https://github.com/owebeeone/jowna>
 
-- Project structure aligned to Vite + TypeScript.
-- Interface-first module boundaries for:
-  - `src/domain`
-  - `src/parsers`
-  - `src/storage/indexeddb`
-  - `src/features/import-tool`
-  - `src/features/file-manager`
-  - `src/features/chart`
-  - `src/grips.ts`, `src/taps.ts`, `src/runtime.ts`
+## What this app currently does
 
-Implemented modules:
+- Manages projects and datasets.
+- Imports CSV/TSV/JSON through an import popover.
+- Previews normalized rows and warnings before apply.
+- Renders interactive chart view with focus/hover/breadcrumb navigation.
+- Downloads chart view as a standalone single-file HTML export.
+- Persists data in IndexedDB with in-memory fallback.
 
-- `src/parsers`: papaparse-backed delimited parser, JSON parser, parser registry, and parse service.
-- `src/storage/indexeddb`: IndexedDB gateway with in-memory fallback.
-- `src/features/import-tool`: controller implementation.
-- `src/features/file-manager`: controller implementation.
-- `src/features/chart`: renderer and navigation implementations.
+## Stack
+
+- Vite + React + TypeScript
+- `@owebeeone/grip-react` for grips/taps state wiring
+- `papaparse` for delimited parsing
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+## Validation
+
+```bash
+npm run format
+npm run typecheck
+npm run test
+```
