@@ -7,4 +7,3 @@ export interface JsonHierarchyParser {
 export interface JsonFlatRowsParser {
   parseFlatRowsJson(input: ParserInput): Promise<ParseResult>;
 }
-

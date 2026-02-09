@@ -41,4 +41,3 @@ export interface ChartNavigationController {
   readonly state: ChartNavigationState;
   readonly actions: ChartNavigationActions;
 }
-

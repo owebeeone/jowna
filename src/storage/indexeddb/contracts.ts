@@ -1,10 +1,4 @@
-import type {
-  Dataset,
-  DatasetId,
-  PersistedSettings,
-  Project,
-  ProjectId,
-} from "../../domain";
+import type { Dataset, DatasetId, PersistedSettings, Project, ProjectId } from "../../domain";
 
 export interface ProjectRepository {
   listProjects(): Promise<Project[]>;
@@ -37,4 +31,3 @@ export interface IndexedDbStorageGateway {
   settings: SettingsRepository;
   recentProjects: RecentProjectRepository;
 }
-

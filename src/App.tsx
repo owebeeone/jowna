@@ -13,8 +13,8 @@ const boundaryMap: ModuleBoundaryMap = {
 export function App() {
   return (
     <main>
-      <h1>Jowna: Interface Scaffolding</h1>
-      <p>Step 1 is in progress: contracts and module boundaries only.</p>
+      <h1>Jowna: Phase 1 Foundations</h1>
+      <p>Core contracts and initial implementation modules are in place.</p>
       <ul>
         {Object.entries(boundaryMap).map(([name, path]) => (
           <li key={name}>
@@ -25,4 +25,3 @@ export function App() {
     </main>
   );
 }
-

@@ -7,4 +7,3 @@ export interface ModuleBoundaryMap {
   chart: string;
   state: string;
 }
-

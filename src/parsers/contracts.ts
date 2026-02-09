@@ -37,4 +37,3 @@ export interface ParserContractDefinition {
   format: SupportedImportFormat;
   requiredParameters: readonly (keyof ImportParameters)[];
 }
-

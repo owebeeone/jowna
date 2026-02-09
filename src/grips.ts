@@ -33,3 +33,33 @@ export type JownaGripContracts = {
   [K in JownaGripKey]: GripContract<K>;
 };
 
+export function createDefaultGripState(): JownaGripState {
+  return {
+    projects: [],
+    activeProjectId: null,
+    activeDataset: null,
+    chartSettings: null,
+    appSettings: null,
+    importParameters: null,
+    importPreview: null,
+    importWarnings: [],
+    loading: {},
+    errors: {},
+  };
+}
+
+export function createGripContracts(
+  initialState: JownaGripState = createDefaultGripState(),
+): JownaGripContracts {
+  const keys = Object.keys(initialState) as JownaGripKey[];
+  return Object.fromEntries(
+    keys.map((key) => [
+      key,
+      {
+        key,
+        description: `Grip for ${key}`,
+        initialValue: initialState[key],
+      },
+    ]),
+  ) as JownaGripContracts;
+}

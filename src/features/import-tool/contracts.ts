@@ -32,4 +32,3 @@ export interface ImportToolController {
 export interface ImportToolViewProps {
   controller: ImportToolController;
 }
-

@@ -30,4 +30,3 @@ export interface FileManagerController {
 export interface FileManagerViewProps {
   controller: FileManagerController;
 }
-

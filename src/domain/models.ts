@@ -103,4 +103,3 @@ export interface TablePreview {
   totalRows: number;
   truncated: boolean;
 }
-
