@@ -1,6 +1,13 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { makeImportParameters, makeImportSource } from "../test-support/fixtures";
 import { PapaDelimitedParser } from "./delimited.parser";
+
+const POPULATION_DEMOGRAPHICS_TSV_PATH = resolve(
+  process.cwd(),
+  "../../population_demographics.tsv",
+);
 
 describe("PapaDelimitedParser", () => {
   it("parses CSV with header/comments and emits warnings for invalid rows", async () => {
@@ -53,5 +60,30 @@ describe("PapaDelimitedParser", () => {
     expect(result.normalizedRows).toHaveLength(2);
     expect(result.normalizedRows[0]?.path).toEqual(["Europe", "Germany"]);
     expect(result.preview.totalRows).toBe(2);
+  });
+
+  it("parses population demographics TSV without missing-path warnings", async () => {
+    const parser = new PapaDelimitedParser();
+    const result = await parser.parse({
+      source: makeImportSource({
+        name: "population_demographics.tsv",
+        content: readFileSync(POPULATION_DEMOGRAPHICS_TSV_PATH, "utf8"),
+      }),
+      parameters: makeImportParameters({
+        format: "tsv",
+        delimiter: "\t",
+        hasHeaderRow: false,
+        commentPrefix: "#",
+        magnitudeField: "col1",
+        pathFields: ["level1", "level2"],
+        urlField: null,
+        descriptionField: null,
+        attributeFields: [],
+      }),
+    });
+
+    expect(result.normalizedRows.length).toBeGreaterThan(200);
+    expect(result.warnings.some((warning) => warning.code === "MISSING_PATH")).toBe(false);
+    expect(result.normalizedRows[0]?.path).toEqual(["China", "Male", "0-10"]);
   });
 });

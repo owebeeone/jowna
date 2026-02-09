@@ -33,25 +33,21 @@ export class PapaDelimitedParser implements DataParser, DelimitedDataParser {
     const warnings: ImportWarning[] = [];
     const filtered = filterCommentLines(input.source.content, input.parameters.commentPrefix);
     const delimiter = resolveDelimiter(input.parameters);
-    const parsed = Papa.parse<Record<string, string> | string[]>(filtered.content, {
-      delimiter,
-      header: input.parameters.hasHeaderRow,
-      skipEmptyLines: false,
-      transformHeader: (header) => header.trim(),
-    });
+    const parseResult = parseWithHeaderFallback(filtered.content, delimiter, input.parameters);
+    const { parsed, hasHeaderRow } = parseResult;
 
     parsed.errors.forEach((error) => {
       warnings.push(
         createWarning({
           code: "PARSE_ERROR",
           message: error.message,
-          row: resolveSourceRow(filtered.sourceRows, input.parameters.hasHeaderRow, error.row ?? 0),
+          row: resolveSourceRow(filtered.sourceRows, hasHeaderRow, error.row ?? 0),
         }),
       );
     });
 
     const rawRows = parsed.data.filter((row) => row !== null && row !== undefined);
-    const normalized = input.parameters.hasHeaderRow
+    const normalized = hasHeaderRow
       ? normalizeObjectRows(
           rawRows as Record<string, string>[],
           filtered.sourceRows,
@@ -101,6 +97,11 @@ interface NormalizedRowsResult {
   attributeKeys: string[];
 }
 
+interface ParsedDelimitedContent {
+  parsed: Papa.ParseResult<Record<string, string> | string[]>;
+  hasHeaderRow: boolean;
+}
+
 function filterCommentLines(content: string, commentPrefix: string): FilteredContent {
   if (!commentPrefix) {
     const sourceRows = content.split(/\r?\n/).map((_, index) => index + 1);
@@ -136,29 +137,19 @@ function normalizeObjectRows(
 
   rows.forEach((row, rowIndex) => {
     const sourceRow = resolveSourceRow(sourceRows, true, rowIndex);
-    const magnitude = Number(readObjectField(row, parameters.magnitudeField));
-    const path = parameters.pathFields
-      .map((field) => readObjectField(row, field).trim())
-      .filter((value) => value.length > 0);
+    const rowFields = Object.keys(row);
+    const magnitudeField = resolveMagnitudeField(rowFields, parameters);
+    const magnitudeRaw = readObjectField(row, magnitudeField);
+    const magnitude = Number(magnitudeRaw);
+    const path = resolvePathValues(row, rowFields, parameters, magnitudeField);
 
     if (!Number.isFinite(magnitude) || magnitude < 0) {
       localWarnings.push(
         createWarning({
           code: "INVALID_MAGNITUDE",
-          message: `Invalid magnitude '${readObjectField(row, parameters.magnitudeField)}'.`,
+          message: `Invalid magnitude '${magnitudeRaw}'.`,
           row: sourceRow,
-          column: parameters.magnitudeField,
-        }),
-      );
-      return;
-    }
-
-    if (path.length === 0) {
-      localWarnings.push(
-        createWarning({
-          code: "MISSING_PATH",
-          message: "Path fields are empty after normalization.",
-          row: sourceRow,
+          column: magnitudeField,
         }),
       );
       return;
@@ -207,11 +198,10 @@ function normalizeArrayRows(
     const rowAsObject = Object.fromEntries(
       headers.map((header, headerIndex) => [header, padded[headerIndex] ?? ""]),
     );
-    const magnitudeRaw = readObjectField(rowAsObject, parameters.magnitudeField);
+    const magnitudeField = resolveMagnitudeField(headers, parameters);
+    const magnitudeRaw = readObjectField(rowAsObject, magnitudeField);
     const magnitude = Number(magnitudeRaw);
-    const path = parameters.pathFields
-      .map((field) => readObjectField(rowAsObject, field).trim())
-      .filter((value) => value.length > 0);
+    const path = resolvePathValues(rowAsObject, headers, parameters, magnitudeField);
 
     if (!Number.isFinite(magnitude) || magnitude < 0) {
       localWarnings.push(
@@ -219,18 +209,7 @@ function normalizeArrayRows(
           code: "INVALID_MAGNITUDE",
           message: `Invalid magnitude '${magnitudeRaw}'.`,
           row: sourceRow,
-          column: parameters.magnitudeField,
-        }),
-      );
-      return;
-    }
-
-    if (path.length === 0) {
-      localWarnings.push(
-        createWarning({
-          code: "MISSING_PATH",
-          message: "Path fields are empty after normalization.",
-          row: sourceRow,
+          column: magnitudeField,
         }),
       );
       return;
@@ -285,6 +264,113 @@ function resolveDelimiter(parameters: ImportParameters): string {
     return parameters.delimiter;
   }
   return parameters.format === "tsv" ? "\t" : ",";
+}
+
+function parseWithHeaderFallback(
+  content: string,
+  delimiter: string,
+  parameters: ImportParameters,
+): ParsedDelimitedContent {
+  const parsedWithConfiguredHeader = parseDelimitedContent(
+    content,
+    delimiter,
+    parameters.hasHeaderRow,
+  );
+  if (parameters.hasHeaderRow && shouldFallbackToNoHeader(parsedWithConfiguredHeader, parameters)) {
+    return {
+      parsed: parseDelimitedContent(content, delimiter, false),
+      hasHeaderRow: false,
+    };
+  }
+  return {
+    parsed: parsedWithConfiguredHeader,
+    hasHeaderRow: parameters.hasHeaderRow,
+  };
+}
+
+function parseDelimitedContent(
+  content: string,
+  delimiter: string,
+  hasHeaderRow: boolean,
+): Papa.ParseResult<Record<string, string> | string[]> {
+  return Papa.parse<Record<string, string> | string[]>(content, {
+    delimiter,
+    header: hasHeaderRow,
+    skipEmptyLines: false,
+    transformHeader: (header) => header.trim(),
+  });
+}
+
+function shouldFallbackToNoHeader(
+  parsed: Papa.ParseResult<Record<string, string> | string[]>,
+  parameters: ImportParameters,
+): boolean {
+  const headerFields = parsed.meta.fields?.map((field) => field.trim()) ?? [];
+  if (headerFields.length === 0) {
+    return false;
+  }
+  if (headerFields.includes(parameters.magnitudeField)) {
+    return false;
+  }
+  const firstField = headerFields[0] ?? "";
+  return firstField.length > 0 && Number.isFinite(Number(firstField));
+}
+
+function resolveMagnitudeField(availableFields: string[], parameters: ImportParameters): string {
+  if (availableFields.includes(parameters.magnitudeField)) {
+    return parameters.magnitudeField;
+  }
+  if (availableFields.includes("col1")) {
+    return "col1";
+  }
+  return availableFields[0] ?? parameters.magnitudeField;
+}
+
+function resolvePathValues(
+  row: Record<string, string>,
+  availableFields: string[],
+  parameters: ImportParameters,
+  magnitudeField: string,
+): string[] {
+  const configuredPath = parameters.pathFields
+    .map((field) => readObjectField(row, field).trim())
+    .filter((value) => value.length > 0);
+  if (configuredPath.length > 0) {
+    return configuredPath;
+  }
+
+  const fallbackPathFields = availableFields.filter((field) =>
+    isPathFallbackField(field, parameters, magnitudeField),
+  );
+  return fallbackPathFields
+    .map((field) => readObjectField(row, field).trim())
+    .filter((value) => value.length > 0);
+}
+
+function isPathFallbackField(
+  field: string,
+  parameters: ImportParameters,
+  magnitudeField: string,
+): boolean {
+  if (field.length === 0) {
+    return false;
+  }
+  if (field === magnitudeField) {
+    return false;
+  }
+  if (parameters.pathFields.includes(field)) {
+    return false;
+  }
+  if (parameters.attributeFields.includes(field)) {
+    return false;
+  }
+  if (parameters.urlField && field === parameters.urlField) {
+    return false;
+  }
+  if (parameters.descriptionField && field === parameters.descriptionField) {
+    return false;
+  }
+  return true;
 }
 
 function readObjectField(row: Record<string, string>, field: string): string {

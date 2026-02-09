@@ -40,11 +40,21 @@ export function normalizeParametersForFormat(
   parameters: ImportParameters,
   format: SupportedImportFormat,
 ): ImportParameters {
-  if (format === "tsv" && parameters.delimiter.length === 0) {
-    return { ...parameters, delimiter: "\t", format };
+  const isAutoMode = parameters.format === "auto";
+
+  if (format === "tsv") {
+    return {
+      ...parameters,
+      delimiter: "\t",
+      format,
+    };
   }
-  if (format === "csv" && parameters.delimiter.length === 0) {
-    return { ...parameters, delimiter: ",", format };
+  if (format === "csv") {
+    return {
+      ...parameters,
+      delimiter: isAutoMode || parameters.delimiter.length === 0 ? "," : parameters.delimiter,
+      format,
+    };
   }
   return { ...parameters, format };
 }

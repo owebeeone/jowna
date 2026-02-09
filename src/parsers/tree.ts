@@ -139,9 +139,8 @@ function applyLeafMetadata(
 function finalizeTree(node: MutableTreeNode): TreeNode {
   const children = [...node.children.values()].map((child) => finalizeTree(child));
   const hasChildren = children.length > 0;
-  const magnitude = hasChildren
-    ? children.reduce((sum, child) => sum + child.magnitude, 0)
-    : node.magnitude;
+  const childrenMagnitude = children.reduce((sum, child) => sum + child.magnitude, 0);
+  const magnitude = node.magnitude + childrenMagnitude;
 
   return {
     name: node.name,
