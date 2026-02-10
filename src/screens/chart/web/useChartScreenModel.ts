@@ -9,6 +9,7 @@ import {
 import {
   ACTIVE_DATASET,
   ACTIVE_DATASET_ID,
+  ACTIVE_PROJECT,
   CHART_DEPTH_LIMIT,
   CHART_DEPTH_LIMIT_TAP,
   CHART_FOCUS_PATH,
@@ -48,6 +49,7 @@ import { downloadHtmlFile, downloadSvgFile, toSvgFileName } from "./download";
 export function useChartScreenModel() {
   const actions = useGrip(JOWNA_ACTIONS);
   const dataset = useGrip(ACTIVE_DATASET);
+  const activeProject = useGrip(ACTIVE_PROJECT);
   const datasets = useGrip(DATASETS) ?? [];
   const activeDatasetId = useGrip(ACTIVE_DATASET_ID) ?? null;
   const chartLayout = useGrip(CHART_LAYOUT);
@@ -261,18 +263,29 @@ export function useChartScreenModel() {
       updateChartSettings({ [dimension]: normalized } as Partial<ChartSettings>);
     };
 
-  const onDownloadHtml = () => {
+  const onDownloadHtml = async () => {
     if (!dataset) {
       return;
     }
 
-    const html = createStandaloneChartDocument({
-      datasetName: dataset.name,
-      tree: dataset.tree,
-      depthLimit,
-      chartSettings: resolvedChartSettings,
-    });
-    downloadHtmlFile(toStandaloneChartFileName(dataset.name), html);
+    try {
+      const html = await createStandaloneChartDocument({
+        project: activeProject ?? null,
+        datasets,
+        activeDatasetId,
+        depthLimit,
+        chartSettings: resolvedChartSettings,
+        focusPath,
+      });
+      downloadHtmlFile(toStandaloneChartFileName(dataset.name), html);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed generating standalone chart HTML.";
+      console.warn("Failed generating standalone chart HTML", error);
+      if (typeof window !== "undefined") {
+        window.alert(message);
+      }
+    }
   };
 
   const onDownloadSvg = () => {
@@ -341,6 +354,7 @@ export function useChartScreenModel() {
   return {
     actions,
     dataset,
+    activeProject,
     datasets,
     activeDatasetId,
     chartLayout,
