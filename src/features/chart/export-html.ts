@@ -45,6 +45,7 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
             <button id="btn-forward" class="ghost">Forward</button>
             <button id="btn-up" class="ghost">Up</button>
             <button id="btn-reset" class="ghost">Reset</button>
+            <button id="btn-download-svg" class="ghost">Download SVG</button>
           </div>
           <div class="row depth-wrap">
             <span class="muted">Depth</span>
@@ -442,6 +443,7 @@ const STANDALONE_SCRIPT = `
     forwardButton: byId("btn-forward"),
     upButton: byId("btn-up"),
     resetButton: byId("btn-reset"),
+    downloadSvgButton: byId("btn-download-svg"),
     depthInput: byId("depth-input"),
     breadcrumbs: byId("breadcrumbs"),
     chartSurface: byClass("chart-surface"),
@@ -502,6 +504,10 @@ const STANDALONE_SCRIPT = `
       state.history = [rootPath.slice()];
       state.historyIndex = 0;
       render();
+    });
+
+    elements.downloadSvgButton.addEventListener("click", function () {
+      downloadCurrentSvg();
     });
 
     elements.depthInput.addEventListener("input", function () {
@@ -1487,6 +1493,70 @@ const STANDALONE_SCRIPT = `
 
   function formatNumber(value) {
     return Number(value || 0).toLocaleString();
+  }
+
+  function downloadCurrentSvg() {
+    var fileName = toSvgFileName(datasetName);
+    var svgMarkup = serializeSvgForDownload(elements.chartSvg);
+    downloadTextFile(fileName, svgMarkup, "image/svg+xml;charset=utf-8");
+  }
+
+  function serializeSvgForDownload(svgElement) {
+    var clone = svgElement.cloneNode(true);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+
+    var viewBox = clone.getAttribute("viewBox");
+    if (typeof viewBox === "string" && viewBox.length > 0) {
+      var parts = viewBox
+        .trim()
+        .split(/\\s+/)
+        .map(function (part) {
+          return Number.parseFloat(part);
+        });
+      if (
+        parts.length === 4 &&
+        Number.isFinite(parts[0]) &&
+        Number.isFinite(parts[1]) &&
+        Number.isFinite(parts[2]) &&
+        Number.isFinite(parts[3])
+      ) {
+        clone.setAttribute("width", String(parts[2]));
+        clone.setAttribute("height", String(parts[3]));
+      }
+    }
+
+    var style = createSvgElement("style");
+    style.textContent =
+      ".chart-wedge-label{fill:#0e2b1f;font-weight:600}" +
+      ".chart-center-disc{fill:#f4faf7;stroke:#c4d8cc;stroke-width:1.4}" +
+      ".chart-center-title{font-size:13px;font-weight:700;fill:#102a1f}" +
+      ".chart-center-metric{font-size:15px;font-weight:700;fill:#174936}" +
+      ".chart-center-sub{font-size:11px;fill:#4f675d}";
+    clone.insertBefore(style, clone.firstChild);
+
+    return '<?xml version="1.0" encoding="UTF-8"?>\\n' + clone.outerHTML;
+  }
+
+  function toSvgFileName(name) {
+    var normalized = String(name || "")
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    var base = normalized.length > 0 ? normalized : "dataset-chart";
+    return base + ".svg";
+  }
+
+  function downloadTextFile(fileName, content, mimeType) {
+    var blob = new Blob([content], { type: mimeType });
+    var url = URL.createObjectURL(blob);
+    var anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.rel = "noopener";
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   function readPayload() {
