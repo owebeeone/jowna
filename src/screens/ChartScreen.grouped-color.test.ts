@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_CHART_SETTINGS } from "../grips";
 import { parseKronaHtmlProject } from "../features/file-manager";
 import { SunburstChartRenderer } from "../features/chart";
-import { buildKronaColorMap, createWedgeRenderPlan } from "./ChartScreen";
+import { buildKronaColorMap, createWedgeRenderPlan } from "./chart/common";
 
 const KRONA_UNCLASSIFIED_COLOR = "rgb(220,220,220)";
 
