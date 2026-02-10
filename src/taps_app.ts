@@ -56,6 +56,7 @@ import {
   IMPORT_WARNINGS_STATE_TAP,
   JOWNA_ACTIONS,
   type JownaActions,
+  type ProjectImportReport,
   NEW_PROJECT_NAME,
   NEW_PROJECT_NAME_TAP,
   PREVIEW_FILTER,
@@ -69,6 +70,9 @@ import { createIndexedDbStorageGateway } from "./storage/indexeddb";
 import { SunburstChartRenderer } from "./features/chart";
 import {
   createProjectArchive,
+  looksLikeKronaHtml,
+  materializeParsedKronaHtmlProject,
+  parseKronaHtmlProject,
   materializeImportedProject,
   parseProjectArchive,
   PROJECT_ARCHIVE_MIME_TYPE,
@@ -386,21 +390,82 @@ export function registerJownaTaps(): void {
 
     importProjectArchive: async (file) => {
       const raw = await file.text();
-      const archive = parseProjectArchive(raw);
-      const timestamp = nowIso();
-      const imported = materializeImportedProject({
-        archive,
-        nowIso: timestamp,
-        createId,
-      });
 
-      for (const dataset of imported.datasets) {
-        await storage.datasets.saveDataset(dataset);
+      const importFromArchive = async (): Promise<ProjectImportReport> => {
+        const archive = parseProjectArchive(raw);
+        const timestamp = nowIso();
+        const imported = materializeImportedProject({
+          archive,
+          nowIso: timestamp,
+          createId,
+        });
+
+        for (const dataset of imported.datasets) {
+          await storage.datasets.saveDataset(dataset);
+        }
+        await storage.projects.saveProject(imported.project);
+        await actions.refreshProjects();
+        await actions.openProject(imported.project.id);
+
+        return {
+          mode: "archive",
+          projectName: imported.project.name,
+          datasetCount: imported.datasets.length,
+          warnings: [],
+        };
+      };
+
+      const importFromKronaHtml = async (): Promise<ProjectImportReport> => {
+        const parsed = parseKronaHtmlProject({
+          name: file.name,
+          content: raw,
+        });
+        const timestamp = nowIso();
+        const imported = materializeParsedKronaHtmlProject({
+          parsed,
+          nowIso: timestamp,
+          createId,
+        });
+
+        for (const dataset of imported.datasets) {
+          await storage.datasets.saveDataset(dataset);
+        }
+        await storage.projects.saveProject(imported.project);
+        await actions.refreshProjects();
+        await actions.openProject(imported.project.id);
+
+        return {
+          mode: "krona-html",
+          projectName: imported.project.name,
+          datasetCount: imported.datasets.length,
+          warnings: imported.warnings,
+        };
+      };
+
+      if (looksLikeKronaHtml(file.name, raw)) {
+        try {
+          return await importFromKronaHtml();
+        } catch (kronaError) {
+          try {
+            return await importFromArchive();
+          } catch {
+            throw kronaError;
+          }
+        }
       }
-      await storage.projects.saveProject(imported.project);
 
-      await actions.refreshProjects();
-      await actions.openProject(imported.project.id);
+      try {
+        return await importFromArchive();
+      } catch (archiveError) {
+        try {
+          return await importFromKronaHtml();
+        } catch (kronaError) {
+          throw new Error(
+            `Unsupported import file. Archive parse failed: ${toErrorMessage(archiveError)}. ` +
+              `Krona HTML parse failed: ${toErrorMessage(kronaError)}.`,
+          );
+        }
+      }
     },
 
     renameDataset: async (datasetId, nextName) => {
@@ -683,6 +748,13 @@ function normalizeNonEmpty(value: string, fallback: string): string {
 
 function normalizePath(path: string[]): string[] {
   return path.map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return "Unknown error";
 }
 
 function downloadTextFile(fileName: string, content: string, mimeType: string): void {

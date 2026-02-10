@@ -69,6 +69,7 @@ describe("chart contracts", () => {
         borderColor: "#111",
         wedgeStrokeWidth: 1,
         wedgeStrokeColor: "#333",
+        collapseRedundant: true,
         fontFamily: "IBM Plex Sans",
         fontSizePx: 12,
         width: "fit",

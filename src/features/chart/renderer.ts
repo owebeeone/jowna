@@ -12,13 +12,17 @@ export class SunburstChartRenderer implements ChartRenderer {
     const root = resolveFocusedNode(input.root, normalizedFocusPath) ?? input.root;
     const pathPrefix = normalizedFocusPath ? normalizedFocusPath.slice(0, -1) : [];
     const totalMagnitude = computeEffectiveMagnitude(root);
+    const collapseRedundant = input.settings.collapseRedundant !== false;
+    const rootHasMultipleChildren = (input.root.children?.length ?? 0) > 1;
     const nodes = flattenForLayout({
       node: root,
-      rootMagnitude: totalMagnitude,
       pathPrefix,
       depth: 0,
       startAngle: 0,
+      angleSpan: totalMagnitude > 0 ? Math.PI * 2 : 0,
       depthLimit: input.depthLimit,
+      collapseRedundant,
+      rootHasMultipleChildren,
     });
 
     return {
@@ -30,18 +34,19 @@ export class SunburstChartRenderer implements ChartRenderer {
 
 interface FlattenArgs {
   node: TreeNode;
-  rootMagnitude: number;
   pathPrefix: string[];
   depth: number;
   startAngle: number;
+  angleSpan: number;
   depthLimit: number | null;
+  collapseRedundant: boolean;
+  rootHasMultipleChildren: boolean;
 }
 
 function flattenForLayout(args: FlattenArgs): ChartLayoutNode[] {
   const currentPath = [...args.pathPrefix, args.node.name];
   const nodeMagnitude = computeEffectiveMagnitude(args.node);
-  const angleSpan =
-    args.rootMagnitude === 0 ? 0 : (nodeMagnitude / args.rootMagnitude) * Math.PI * 2;
+  const angleSpan = Math.max(0, args.angleSpan);
 
   const currentNode: ChartLayoutNode = {
     path: currentPath,
@@ -62,10 +67,18 @@ function flattenForLayout(args: FlattenArgs): ChartLayoutNode[] {
   }
 
   const sortedChildren = args.node.children
-    .map((child) => ({
-      child,
-      magnitude: computeEffectiveMagnitude(child),
-    }))
+    .map((child) => {
+      const resolved = resolveCollapsedChild({
+        node: child,
+        collapseRedundant: args.collapseRedundant,
+        rootHasMultipleChildren: args.rootHasMultipleChildren,
+      });
+      return {
+        child: resolved.node,
+        pathSegments: resolved.pathSegments,
+        magnitude: computeEffectiveMagnitude(resolved.node),
+      };
+    })
     .filter((entry) => entry.magnitude > 0)
     .sort((left, right) => {
       if (right.magnitude !== left.magnitude) {
@@ -82,11 +95,13 @@ function flattenForLayout(args: FlattenArgs): ChartLayoutNode[] {
     nodes.push(
       ...flattenForLayout({
         node: entry.child,
-        rootMagnitude: args.rootMagnitude,
-        pathPrefix: currentPath,
+        pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
         depth: args.depth + 1,
         startAngle: childStartAngle,
+        angleSpan: childAngleSpan,
         depthLimit: args.depthLimit,
+        collapseRedundant: args.collapseRedundant,
+        rootHasMultipleChildren: args.rootHasMultipleChildren,
       }),
     );
     childStartAngle += childAngleSpan;
@@ -112,6 +127,52 @@ function normalizeMagnitude(value: number): number {
     return 0;
   }
   return value;
+}
+
+interface CollapseResolution {
+  node: TreeNode;
+  pathSegments: string[];
+}
+
+function resolveCollapsedChild(input: {
+  node: TreeNode;
+  collapseRedundant: boolean;
+  rootHasMultipleChildren: boolean;
+}): CollapseResolution {
+  const pathSegments = [input.node.name];
+  let node = input.node;
+
+  if (!input.collapseRedundant) {
+    return { node, pathSegments };
+  }
+
+  while (isCollapsibleNode(node, input.rootHasMultipleChildren)) {
+    const child = node.children?.[0];
+    if (!child) {
+      break;
+    }
+    node = child;
+    pathSegments.push(child.name);
+  }
+
+  return {
+    node,
+    pathSegments,
+  };
+}
+
+function isCollapsibleNode(node: TreeNode, rootHasMultipleChildren: boolean): boolean {
+  const children = node.children ?? [];
+  if (children.length !== 1) {
+    return false;
+  }
+  const child = children[0]!;
+  const nodeMagnitude = computeEffectiveMagnitude(node);
+  const childMagnitude = computeEffectiveMagnitude(child);
+  if (Math.abs(nodeMagnitude - childMagnitude) > 1e-9) {
+    return false;
+  }
+  return rootHasMultipleChildren || (child.children?.length ?? 0) > 0;
 }
 
 function resolveFocusedNode(root: TreeNode, focusedPath: string[] | null): TreeNode | null {

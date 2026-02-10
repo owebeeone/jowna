@@ -45,6 +45,10 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
             <button id="btn-forward" class="ghost">Forward</button>
             <button id="btn-up" class="ghost">Up</button>
             <button id="btn-reset" class="ghost">Reset</button>
+            <label class="row chart-collapse-wrap">
+              <input id="collapse-input" type="checkbox" />
+              <span>Collapse</span>
+            </label>
             <button id="btn-download-svg" class="ghost">Download SVG</button>
           </div>
           <div class="row depth-wrap">
@@ -118,7 +122,7 @@ const STANDALONE_STYLE = `
 
 body {
   margin: 0;
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: sans-serif;
 }
 
 .app-shell {
@@ -189,6 +193,18 @@ input {
   border-radius: 8px;
   padding: 8px;
   background: #fbfdfc;
+}
+
+.chart-collapse-wrap {
+  border: 1px solid #c5d1ca;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #ffffff;
+}
+
+.chart-collapse-wrap input[type="checkbox"] {
+  width: auto;
+  margin: 0;
 }
 
 button {
@@ -443,6 +459,7 @@ const STANDALONE_SCRIPT = `
     forwardButton: byId("btn-forward"),
     upButton: byId("btn-up"),
     resetButton: byId("btn-reset"),
+    collapseInput: byId("collapse-input"),
     downloadSvgButton: byId("btn-download-svg"),
     depthInput: byId("depth-input"),
     breadcrumbs: byId("breadcrumbs"),
@@ -459,6 +476,7 @@ const STANDALONE_SCRIPT = `
   elements.title.textContent = datasetName;
   elements.subtitle.textContent = datasetName;
   elements.depthInput.value = String(state.depthLimit);
+  elements.collapseInput.checked = chartSettings.collapseRedundant !== false;
   applyChartSettings();
 
   bindControls();
@@ -512,6 +530,11 @@ const STANDALONE_SCRIPT = `
 
     elements.depthInput.addEventListener("input", function () {
       state.depthLimit = normalizeDepthLimit(elements.depthInput.value);
+      render();
+    });
+
+    elements.collapseInput.addEventListener("change", function () {
+      chartSettings.collapseRedundant = !!elements.collapseInput.checked;
       render();
     });
   }
@@ -887,14 +910,18 @@ const STANDALONE_SCRIPT = `
     var focusedRoot = resolveFocusedNode(root, normalizedFocusPath) || root;
     var pathPrefix = normalizedFocusPath ? normalizedFocusPath.slice(0, -1) : [];
     var totalMagnitude = computeEffectiveMagnitude(focusedRoot);
+    var collapseRedundant = chartSettings.collapseRedundant !== false;
+    var rootHasMultipleChildren = Array.isArray(dataset.tree.children) && dataset.tree.children.length > 1;
     var depthLimit = depthLimitInput <= 0 ? null : depthLimitInput;
     var nodes = flattenForLayout({
       node: focusedRoot,
-      rootMagnitude: totalMagnitude,
       pathPrefix: pathPrefix,
       depth: 0,
       startAngle: 0,
+      angleSpan: totalMagnitude > 0 ? Math.PI * 2 : 0,
       depthLimit: depthLimit,
+      collapseRedundant: collapseRedundant,
+      rootHasMultipleChildren: rootHasMultipleChildren,
     });
 
     return {
@@ -906,7 +933,7 @@ const STANDALONE_SCRIPT = `
   function flattenForLayout(args) {
     var currentPath = args.pathPrefix.concat([args.node.name]);
     var nodeMagnitude = computeEffectiveMagnitude(args.node);
-    var angleSpan = args.rootMagnitude === 0 ? 0 : (nodeMagnitude / args.rootMagnitude) * Math.PI * 2;
+    var angleSpan = Math.max(0, args.angleSpan);
 
     var currentNode = {
       path: currentPath,
@@ -928,9 +955,15 @@ const STANDALONE_SCRIPT = `
 
     var sortedChildren = args.node.children
       .map(function (child) {
+        var collapsed = resolveCollapsedChild(
+          child,
+          args.collapseRedundant,
+          args.rootHasMultipleChildren
+        );
         return {
-          child: child,
-          magnitude: computeEffectiveMagnitude(child),
+          child: collapsed.node,
+          pathSegments: collapsed.pathSegments,
+          magnitude: computeEffectiveMagnitude(collapsed.node),
         };
       })
       .filter(function (entry) {
@@ -953,11 +986,13 @@ const STANDALONE_SCRIPT = `
       var childAngleSpan = childrenTotalMagnitude === 0 ? 0 : (entry.magnitude / childrenTotalMagnitude) * angleSpan;
       var childNodes = flattenForLayout({
         node: entry.child,
-        rootMagnitude: args.rootMagnitude,
-        pathPrefix: currentPath,
+        pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
         depth: args.depth + 1,
         startAngle: childStartAngle,
+        angleSpan: childAngleSpan,
         depthLimit: args.depthLimit,
+        collapseRedundant: args.collapseRedundant,
+        rootHasMultipleChildren: args.rootHasMultipleChildren,
       });
       nodes = nodes.concat(childNodes);
       childStartAngle += childAngleSpan;
@@ -983,6 +1018,45 @@ const STANDALONE_SCRIPT = `
       return 0;
     }
     return numberValue;
+  }
+
+  function resolveCollapsedChild(node, collapseRedundant, rootHasMultipleChildren) {
+    var pathSegments = [node.name];
+    var candidate = node;
+
+    if (!collapseRedundant) {
+      return {
+        node: candidate,
+        pathSegments: pathSegments,
+      };
+    }
+
+    while (isCollapsibleNode(candidate, rootHasMultipleChildren)) {
+      var child = Array.isArray(candidate.children) ? candidate.children[0] : null;
+      if (!child) {
+        break;
+      }
+      candidate = child;
+      pathSegments.push(child.name);
+    }
+
+    return {
+      node: candidate,
+      pathSegments: pathSegments,
+    };
+  }
+
+  function isCollapsibleNode(node, rootHasMultipleChildren) {
+    if (!Array.isArray(node.children) || node.children.length !== 1) {
+      return false;
+    }
+    var child = node.children[0];
+    var nodeMagnitude = computeEffectiveMagnitude(node);
+    var childMagnitude = computeEffectiveMagnitude(child);
+    if (Math.abs(nodeMagnitude - childMagnitude) > 0.000000001) {
+      return false;
+    }
+    return rootHasMultipleChildren || (Array.isArray(child.children) && child.children.length > 0);
   }
 
   function resolveFocusedNode(root, focusedPath) {
@@ -1385,7 +1459,8 @@ const STANDALONE_SCRIPT = `
       borderColor: "#b7c2bc",
       wedgeStrokeWidth: 1,
       wedgeStrokeColor: "#ffffff",
-      fontFamily: "IBM Plex Sans",
+      collapseRedundant: true,
+      fontFamily: "sans-serif",
       fontSizePx: 12,
       width: "fit",
       height: "fit",
@@ -1418,6 +1493,10 @@ const STANDALONE_SCRIPT = `
         typeof raw.wedgeStrokeColor === "string"
           ? raw.wedgeStrokeColor
           : defaults.wedgeStrokeColor,
+      collapseRedundant:
+        typeof raw.collapseRedundant === "boolean"
+          ? raw.collapseRedundant
+          : defaults.collapseRedundant,
       fontFamily: typeof raw.fontFamily === "string" ? raw.fontFamily : defaults.fontFamily,
       fontSizePx:
         typeof raw.fontSizePx === "number" && Number.isFinite(raw.fontSizePx)
@@ -1431,7 +1510,7 @@ const STANDALONE_SCRIPT = `
 
   function resolveFontFamily(fontFamily) {
     if (typeof fontFamily !== "string" || fontFamily.trim().length === 0) {
-      return "IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      return "sans-serif";
     }
     if (fontFamily.includes(",")) {
       return fontFamily;
@@ -1573,7 +1652,7 @@ const STANDALONE_SCRIPT = `
 
   function showFatal(message) {
     document.body.innerHTML =
-      '<div style="padding:24px;font-family:IBM Plex Sans,sans-serif"><h1>Jowna Export</h1><p>' +
+      '<div style="padding:24px;font-family:sans-serif"><h1>Jowna Export</h1><p>' +
       message +
       "</p></div>";
   }

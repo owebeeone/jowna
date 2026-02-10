@@ -61,6 +61,7 @@ export interface ChartSettings {
   borderColor: string;
   wedgeStrokeWidth: number;
   wedgeStrokeColor: string;
+  collapseRedundant: boolean;
   fontFamily: string;
   fontSizePx: number;
   width: number | "fit";

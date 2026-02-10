@@ -17,6 +17,13 @@ import { defineGrip } from "./runtime_graph";
 
 export type AppView = "selection" | "chart";
 
+export interface ProjectImportReport {
+  mode: "archive" | "krona-html";
+  projectName: string;
+  datasetCount: number;
+  warnings: ImportWarning[];
+}
+
 export interface JownaActions {
   refreshProjects: () => Promise<void>;
   createProject: (name: string) => Promise<void>;
@@ -24,7 +31,7 @@ export interface JownaActions {
   deleteProject: (projectId: string) => Promise<void>;
   renameProject: (projectId: string, nextName: string) => Promise<void>;
   exportProjectArchive: (projectId: string) => Promise<void>;
-  importProjectArchive: (file: File) => Promise<void>;
+  importProjectArchive: (file: File) => Promise<ProjectImportReport>;
   renameDataset: (datasetId: string, nextName: string) => Promise<void>;
   openProject: (projectId: string) => Promise<void>;
   parsePreview: () => Promise<void>;
@@ -44,7 +51,8 @@ export const DEFAULT_CHART_SETTINGS: ChartSettings = {
   borderColor: "#b7c2bc",
   wedgeStrokeWidth: 1,
   wedgeStrokeColor: "#ffffff",
-  fontFamily: "IBM Plex Sans",
+  collapseRedundant: true,
+  fontFamily: "sans-serif",
   fontSizePx: 12,
   width: "fit",
   height: "fit",

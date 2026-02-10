@@ -1,6 +1,6 @@
 import { useGrip, useTextGrip } from "@owebeeone/grip-react";
 import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
-import type { Dataset } from "../domain";
+import type { Dataset, ImportWarning } from "../domain";
 import {
   ACTIVE_DATASET_ID,
   ACTIVE_PROJECT_ID,
@@ -30,6 +30,7 @@ import {
 } from "../grips";
 
 export function SelectionScreen() {
+  const MAX_TRANSFER_WARNINGS = 120;
   const actions = useGrip(JOWNA_ACTIONS);
   const projects = useGrip(PROJECTS) ?? [];
   const activeProjectId = useGrip(ACTIVE_PROJECT_ID);
@@ -57,6 +58,7 @@ export function SelectionScreen() {
   const [editingDatasetId, setEditingDatasetId] = useState<string | null>(null);
   const [editingDatasetName, setEditingDatasetName] = useState("");
   const [projectTransferNotice, setProjectTransferNotice] = useState<string | null>(null);
+  const [projectTransferWarnings, setProjectTransferWarnings] = useState<string[]>([]);
   const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const projectArchiveInputRef = useRef<HTMLInputElement | null>(null);
@@ -121,10 +123,12 @@ export function SelectionScreen() {
     try {
       await actions.exportProjectArchive(projectId);
       setProjectTransferNotice(`Downloaded archive for '${projectName}'.`);
+      setProjectTransferWarnings([]);
     } catch (error) {
       console.warn("Failed exporting project archive", error);
       const message = error instanceof Error ? error.message : "Unknown export error.";
       setProjectTransferNotice(`Warning: ${message}`);
+      setProjectTransferWarnings([]);
     }
   };
 
@@ -140,12 +144,25 @@ export function SelectionScreen() {
     }
 
     try {
-      await actions.importProjectArchive(file);
-      setProjectTransferNotice(`Imported project from '${file.name}'.`);
+      const report = await actions.importProjectArchive(file);
+      const warningCount = report.warnings.length;
+      const suffix = warningCount > 0 ? ` with ${warningCount} warning(s).` : ".";
+      const importType = report.mode === "krona-html" ? "Krona HTML project" : "project archive";
+      setProjectTransferNotice(
+        `Imported ${importType} '${report.projectName}' (${report.datasetCount} dataset(s))${suffix}`,
+      );
+      const warningLines = report.warnings.slice(0, MAX_TRANSFER_WARNINGS).map(formatWarning);
+      if (report.warnings.length > MAX_TRANSFER_WARNINGS) {
+        warningLines.push(
+          `... ${report.warnings.length - MAX_TRANSFER_WARNINGS} additional warning(s) not shown.`,
+        );
+      }
+      setProjectTransferWarnings(warningLines);
     } catch (error) {
       console.warn("Failed importing project archive", error);
       const message = error instanceof Error ? error.message : "Unknown import error.";
       setProjectTransferNotice(`Warning: ${message}`);
+      setProjectTransferWarnings([]);
     }
   };
 
@@ -366,7 +383,7 @@ export function SelectionScreen() {
             <input
               ref={projectArchiveInputRef}
               type="file"
-              accept=".jowna,.jowna-project,application/json,text/json"
+              accept=".jowna,.jowna-project,.krona.html,.html,.htm,application/json,text/json,text/html"
               style={{ display: "none" }}
               onChange={onProjectArchiveFileChange}
             />
@@ -375,6 +392,13 @@ export function SelectionScreen() {
               site-data/browser cleanup.
             </div>
             {projectTransferNotice && <div className="muted">{projectTransferNotice}</div>}
+            {projectTransferWarnings.length > 0 && (
+              <ul className="warning-list">
+                {projectTransferWarnings.map((warning, index) => (
+                  <li key={`${warning}-${index}`}>{warning}</li>
+                ))}
+              </ul>
+            )}
 
             <ul className="project-list">
               {projects.map((project) => {
@@ -841,6 +865,12 @@ function toDatasetJsonFileName(datasetName: string): string {
     .replace(/^-|-$/g, "");
   const base = normalized.length > 0 ? normalized : "dataset";
   return `${base}.json`;
+}
+
+function formatWarning(warning: ImportWarning): string {
+  const row = warning.row ? ` (row ${warning.row})` : "";
+  const column = warning.column ? ` [${warning.column}]` : "";
+  return `${warning.code}: ${warning.message}${row}${column}`;
 }
 
 function downloadTextFile(fileName: string, content: string, mimeType: string): void {
