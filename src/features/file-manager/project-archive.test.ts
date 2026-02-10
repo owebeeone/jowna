@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeDataset, makeProject } from "../../test-support/fixtures";
+import { DEFAULT_CHART_SETTINGS } from "../../grips";
 import {
   createProjectArchive,
   materializeImportedProject,
@@ -54,6 +55,25 @@ describe("project archive", () => {
     const parsed = parseProjectArchive(legacyPayload);
     expect(parsed.version).toBe(1);
     expect(parsed.schemaVersion).toBe(PROJECT_ARCHIVE_SCHEMA_VERSION);
+  });
+
+  it("round-trips project chart settings when present", () => {
+    const project = makeProject({
+      chartSettings: {
+        ...DEFAULT_CHART_SETTINGS,
+        fontFamily: "serif",
+        collapseRedundant: false,
+      },
+    });
+    const archive = createProjectArchive({
+      project,
+      datasets: [makeDataset()],
+      exportedAt: "2026-02-09T00:00:00.000Z",
+    });
+
+    const parsed = parseProjectArchive(serializeProjectArchive(archive));
+    expect(parsed.project.chartSettings?.fontFamily).toBe("serif");
+    expect(parsed.project.chartSettings?.collapseRedundant).toBe(false);
   });
 
   it("rejects unsupported archive versions", () => {

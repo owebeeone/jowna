@@ -25,7 +25,7 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
   </head>
   <body>
     <div class="app-shell">
-      <div class="app-frame">
+      <div class="app-frame chart-screen-frame">
         <header class="panel row space-between">
           <div>
             <h1 id="chart-title">Chart</h1>
@@ -45,6 +45,11 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
             <button id="btn-forward" class="ghost">Forward</button>
             <button id="btn-up" class="ghost">Up</button>
             <button id="btn-reset" class="ghost">Reset</button>
+            <button id="btn-toggle-details" class="ghost">Hide Details</button>
+            <label class="row chart-collapse-wrap">
+              <input id="collapse-input" type="checkbox" />
+              <span>Collapse</span>
+            </label>
             <button id="btn-download-svg" class="ghost">Download SVG</button>
           </div>
           <div class="row depth-wrap">
@@ -55,7 +60,7 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
 
         <div id="breadcrumbs" class="panel chart-breadcrumbs"></div>
 
-        <div class="chart-layout">
+        <div id="chart-layout" class="chart-layout">
           <section class="chart-surface chart-surface-krona">
             <svg id="chart-svg" class="chart-canvas chart-canvas-krona" viewBox="0 0 620 620" role="img">
               <g id="chart-root" transform="translate(310 310)"></g>
@@ -63,7 +68,7 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
             <div class="chart-hint muted">Click a segment to zoom. Hover to inspect. Click center to move up.</div>
           </section>
 
-          <aside class="panel stack chart-details">
+          <aside id="chart-details" class="panel stack chart-details">
             <h3 id="details-heading">Details</h3>
             <div id="details-content" class="stack"></div>
             <div class="stack">
@@ -118,7 +123,7 @@ const STANDALONE_STYLE = `
 
 body {
   margin: 0;
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: sans-serif;
 }
 
 .app-shell {
@@ -133,6 +138,11 @@ body {
   padding: 24px;
   display: grid;
   gap: 16px;
+}
+
+.app-frame.chart-screen-frame {
+  max-width: none;
+  width: 100%;
 }
 
 .panel {
@@ -191,6 +201,18 @@ input {
   background: #fbfdfc;
 }
 
+.chart-collapse-wrap {
+  border: 1px solid #c5d1ca;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #ffffff;
+}
+
+.chart-collapse-wrap input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 button {
   border: 1px solid #1f6f4d;
   border-radius: 8px;
@@ -216,8 +238,13 @@ button:disabled {
 
 .chart-layout {
   display: grid;
-  grid-template-columns: minmax(500px, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
+  align-items: start;
+}
+
+.chart-layout.is-details-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .chart-surface {
@@ -225,7 +252,7 @@ button:disabled {
   border: 1px solid #d6dfda;
   border-radius: 12px;
   padding: 12px;
-  min-height: 620px;
+  min-height: 0;
 }
 
 .chart-surface-krona {
@@ -241,7 +268,12 @@ button:disabled {
 }
 
 .chart-canvas-krona {
-  height: 640px;
+  height: clamp(560px, calc(100vh - 270px), 1400px);
+  overflow: visible;
+}
+
+.chart-layout.is-details-hidden .chart-canvas-krona {
+  height: clamp(620px, calc(100vh - 230px), 1600px);
 }
 
 .chart-breadcrumbs {
@@ -292,6 +324,19 @@ button:disabled {
   font-weight: 600;
   pointer-events: none;
   text-rendering: geometricPrecision;
+}
+
+.chart-label-tooltip {
+  pointer-events: none;
+}
+
+.chart-label-tooltip-box {
+  fill: #ffffff;
+}
+
+.chart-label-tooltip-text {
+  fill: #102a1f;
+  font-weight: 600;
 }
 
 .chart-center-disc {
@@ -402,6 +447,10 @@ button:disabled {
     height: 500px;
   }
 
+  .chart-layout.is-details-hidden .chart-canvas-krona {
+    height: 540px;
+  }
+
   .chart-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -412,6 +461,7 @@ const STANDALONE_SCRIPT = `
 (function () {
   var OUTER_RADIUS = 270;
   var MAX_KEY_SEGMENTS = 10;
+  var MIN_LABEL_FONT_SIZE = 4;
   var KRONA_SATURATION = 0.5;
   var KRONA_LIGHTNESS_BASE = 0.6;
   var KRONA_LIGHTNESS_MAX = 0.8;
@@ -431,6 +481,7 @@ const STANDALONE_SCRIPT = `
     focusPath: rootPath.slice(),
     selectedPath: rootPath.slice(),
     hoverPath: null,
+    detailsPanelCollapsed: false,
     history: [rootPath.slice()],
     historyIndex: 0,
     depthLimit: normalizeDepthLimit(payload.depthLimit),
@@ -443,9 +494,13 @@ const STANDALONE_SCRIPT = `
     forwardButton: byId("btn-forward"),
     upButton: byId("btn-up"),
     resetButton: byId("btn-reset"),
+    toggleDetailsButton: byId("btn-toggle-details"),
+    collapseInput: byId("collapse-input"),
     downloadSvgButton: byId("btn-download-svg"),
     depthInput: byId("depth-input"),
     breadcrumbs: byId("breadcrumbs"),
+    chartLayout: byId("chart-layout"),
+    chartDetails: byId("chart-details"),
     chartSurface: byClass("chart-surface"),
     chartSvg: byId("chart-svg"),
     chartRoot: byId("chart-root"),
@@ -459,7 +514,9 @@ const STANDALONE_SCRIPT = `
   elements.title.textContent = datasetName;
   elements.subtitle.textContent = datasetName;
   elements.depthInput.value = String(state.depthLimit);
+  elements.collapseInput.checked = chartSettings.collapseRedundant !== false;
   applyChartSettings();
+  applyDetailsPanelVisibility();
 
   bindControls();
   render();
@@ -506,6 +563,11 @@ const STANDALONE_SCRIPT = `
       render();
     });
 
+    elements.toggleDetailsButton.addEventListener("click", function () {
+      state.detailsPanelCollapsed = !state.detailsPanelCollapsed;
+      applyDetailsPanelVisibility();
+    });
+
     elements.downloadSvgButton.addEventListener("click", function () {
       downloadCurrentSvg();
     });
@@ -514,11 +576,17 @@ const STANDALONE_SCRIPT = `
       state.depthLimit = normalizeDepthLimit(elements.depthInput.value);
       render();
     });
+
+    elements.collapseInput.addEventListener("change", function () {
+      chartSettings.collapseRedundant = !!elements.collapseInput.checked;
+      render();
+    });
   }
 
   function render() {
     var layout = computeLayout(dataset.tree, state.focusPath, state.depthLimit);
-    var kronaColors = buildKronaColorMap(layout);
+    var colorLayout = computeLayout(dataset.tree, null, 0);
+    var kronaColors = buildKronaColorMap(colorLayout);
 
     var resolvedFocusPath = state.focusPath && state.focusPath.length > 0 ? state.focusPath : rootPath;
     var activePath = state.hoverPath || state.selectedPath || resolvedFocusPath;
@@ -528,13 +596,33 @@ const STANDALONE_SCRIPT = `
     var totalMagnitude = layout.totalMagnitude;
     var activeMagnitude = activeLayoutNode ? activeLayoutNode.magnitude : activeNode ? activeNode.magnitude : 0;
     var activeShare = totalMagnitude > 0 ? (activeMagnitude / totalMagnitude) * 100 : 0;
-    var maxDepth = maxNodeDepth(layout.nodes);
-    var radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
+    var layoutDataMaxDepth = computeLayoutDataMaxDepth(layout);
+    var renderDepth = resolveRenderDepth(layoutDataMaxDepth, state.depthLimit);
+    var maxDepth = renderDepth;
+    var radiusScale = createRadiusScale(renderDepth, OUTER_RADIUS);
+    var wedgeRenderPlan = createWedgeRenderPlan(
+      layout,
+      renderDepth,
+      Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx),
+      radiusScale
+    );
     var parentFocusPath = resolvedFocusPath.length > 1 ? resolvedFocusPath.slice(0, -1) : null;
 
     renderToolbar(parentFocusPath);
     renderBreadcrumbs(resolvedFocusPath);
-    renderSvg(layout, kronaColors, activePath, resolvedFocusPath, activeNode, activeMagnitude, activeShare, radiusScale, maxDepth, parentFocusPath);
+    renderSvg(
+      layout,
+      kronaColors,
+      activePath,
+      resolvedFocusPath,
+      activeNode,
+      activeMagnitude,
+      activeShare,
+      radiusScale,
+      maxDepth,
+      parentFocusPath,
+      wedgeRenderPlan
+    );
     renderDetails(activeNode, activePath, activeMagnitude, activeShare);
     renderTopSegments(layout, totalMagnitude, activePath, kronaColors);
   }
@@ -551,10 +639,31 @@ const STANDALONE_SCRIPT = `
     if (elements.chartSvg) {
       if (typeof chartSettings.width === "number" && chartSettings.width > 0) {
         elements.chartSvg.style.width = String(chartSettings.width) + "px";
+      } else {
+        elements.chartSvg.style.width = "";
       }
       if (typeof chartSettings.height === "number" && chartSettings.height > 0) {
         elements.chartSvg.style.height = String(chartSettings.height) + "px";
+      } else {
+        elements.chartSvg.style.height = "";
       }
+      elements.chartSvg.style.overflow = "visible";
+    }
+  }
+
+  function applyDetailsPanelVisibility() {
+    if (!elements.chartLayout || !elements.chartDetails) {
+      return;
+    }
+
+    if (state.detailsPanelCollapsed) {
+      elements.chartLayout.classList.add("is-details-hidden");
+      elements.chartDetails.setAttribute("hidden", "hidden");
+      elements.toggleDetailsButton.textContent = "Show Details";
+    } else {
+      elements.chartLayout.classList.remove("is-details-hidden");
+      elements.chartDetails.removeAttribute("hidden");
+      elements.toggleDetailsButton.textContent = "Hide Details";
     }
   }
 
@@ -591,27 +700,38 @@ const STANDALONE_SCRIPT = `
     activeShare,
     radiusScale,
     maxDepth,
-    parentFocusPath
+    parentFocusPath,
+    wedgeRenderPlan
   ) {
     clearElement(elements.chartRoot);
+    ensureHiddenPattern();
 
-    var nodes = layout.nodes;
-    for (var index = 0; index < nodes.length; index += 1) {
-      var node = nodes[index];
+    var renderNodes = wedgeRenderPlan.visibleNodes;
+    for (var index = 0; index < renderNodes.length; index += 1) {
+      var renderNode = renderNodes[index];
+      var node = renderNode.node;
+      var interactionPath = renderNode.interactionPath;
       if (node.depth <= 0) {
         continue;
       }
 
       var innerRadius = radiusScale(node.depth - 1);
-      var outerRadius = radiusScale(node.depth);
+      var outerRadius = radiusScale(renderNode.outerDepth);
       var pathData = arcPath(innerRadius, outerRadius, node.startAngle, node.endAngle);
       if (!pathData) {
         continue;
       }
 
-      var isActive = activePath ? pathEquals(node.path, activePath) : false;
-      var isFocused = resolvedFocusPath ? pathEquals(node.path, resolvedFocusPath) : false;
-      var fill = kronaColors.get(pathKey(node.path)) || KRONA_UNCLASSIFIED_COLOR;
+      var isInteractive = interactionPath.length > 0 && !isUnclassifiedNodeName(node.name);
+      var isActive = isInteractive && activePath ? pathEquals(interactionPath, activePath) : false;
+      var isFocused = isInteractive && resolvedFocusPath ? pathEquals(interactionPath, resolvedFocusPath) : false;
+      var fill = isUnclassifiedNodeName(node.name)
+        ? KRONA_UNCLASSIFIED_COLOR
+        : resolveNodeFillColor(
+            kronaColors,
+            [renderNode.colorPath || node.path, interactionPath, node.path],
+            KRONA_UNCLASSIFIED_COLOR
+          );
 
       var pathElement = createSvgElement("path");
       pathElement.setAttribute("class", "chart-wedge" + (isActive ? " is-active" : "") + (isFocused ? " is-focus" : ""));
@@ -622,29 +742,97 @@ const STANDALONE_SCRIPT = `
         "stroke-width",
         isActive ? "2.2" : String(Math.max(0.4, chartSettings.wedgeStrokeWidth))
       );
-      pathElement.setAttribute("opacity", state.hoverPath ? (isActive ? "1" : "0.42") : (isFocused ? "1" : "0.92"));
+      pathElement.setAttribute(
+        "opacity",
+        isInteractive && state.hoverPath ? (isActive ? "1" : "0.42") : (isFocused ? "1" : "0.92")
+      );
 
-      pathElement.addEventListener("mouseenter", createHoverHandler(node.path));
-      pathElement.addEventListener("mouseleave", clearHoverHandler);
-      pathElement.addEventListener("click", createFocusHandler(node.path));
-      pathElement.addEventListener("pointerdown", createFocusHandler(node.path));
+      if (isInteractive) {
+        pathElement.setAttribute("role", "button");
+        pathElement.setAttribute("tabindex", "0");
+        pathElement.addEventListener("mouseenter", createHoverHandler(interactionPath));
+        pathElement.addEventListener("mouseleave", clearHoverHandler);
+        pathElement.addEventListener("click", createFocusHandler(interactionPath));
+        pathElement.addEventListener("pointerdown", createFocusHandler(interactionPath));
+      }
 
       var title = createSvgElement("title");
-      title.textContent = node.path.join(" / ") + ": " + formatNumber(node.magnitude);
+      title.textContent = renderNode.isGroupedHidden
+        ? String(renderNode.hiddenCount) + " more"
+        : node.path.join(" / ") + ": " + formatNumber(node.magnitude);
       pathElement.appendChild(title);
       elements.chartRoot.appendChild(pathElement);
+
+      if (renderNode.isGroupedHidden) {
+        var patternPath = createSvgElement("path");
+        patternPath.setAttribute("d", pathData);
+        patternPath.setAttribute("fill", "url(#chart-hidden-pattern)");
+        patternPath.setAttribute("stroke", "none");
+        patternPath.setAttribute("opacity", "0.65");
+        patternPath.setAttribute("pointer-events", "none");
+        elements.chartRoot.appendChild(patternPath);
+      }
     }
 
-    for (var labelIndex = 0; labelIndex < nodes.length; labelIndex += 1) {
-      var labelNode = nodes[labelIndex];
+    for (var labelIndex = 0; labelIndex < renderNodes.length; labelIndex += 1) {
+      var labelRenderNode = renderNodes[labelIndex];
+      var labelNode = labelRenderNode.node;
+      var labelInteractionPath = labelRenderNode.interactionPath;
       if (labelNode.depth <= 0) {
         continue;
       }
       var labelInnerRadius = radiusScale(labelNode.depth - 1);
-      var labelOuterRadius = radiusScale(labelNode.depth);
-      var label = createWedgeLabel(labelNode, labelInnerRadius, labelOuterRadius, layout.totalMagnitude, maxDepth);
+      var labelOuterRadius = radiusScale(labelRenderNode.outerDepth);
+      var label = createWedgeLabel(
+        labelNode,
+        labelInnerRadius,
+        labelOuterRadius,
+        maxDepth,
+        labelRenderNode.outerDepth,
+        Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx)
+      );
       if (!label) {
         continue;
+      }
+
+      var showTooltip = !!state.hoverPath && pathEquals(labelInteractionPath, state.hoverPath) && label.isTruncated;
+      if (showTooltip) {
+        var tooltip = createHoverLabelTooltip(
+          label,
+          Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx)
+        );
+        var tooltipGroup = createSvgElement("g");
+        tooltipGroup.setAttribute("class", "chart-label-tooltip");
+        tooltipGroup.setAttribute("pointer-events", "none");
+
+        var tooltipBox = createSvgElement("rect");
+        tooltipBox.setAttribute("class", "chart-label-tooltip-box");
+        tooltipBox.setAttribute("x", String(tooltip.x));
+        tooltipBox.setAttribute("y", String(tooltip.y));
+        tooltipBox.setAttribute("width", String(tooltip.width));
+        tooltipBox.setAttribute("height", String(tooltip.height));
+        tooltipBox.setAttribute("rx", "7");
+        tooltipBox.setAttribute("ry", "7");
+        tooltipBox.setAttribute("fill", "#ffffff");
+        tooltipBox.setAttribute("stroke", chartSettings.wedgeStrokeColor);
+        tooltipBox.setAttribute("stroke-width", String(Math.max(0.4, chartSettings.wedgeStrokeWidth) + 0.5));
+        tooltipGroup.appendChild(tooltipBox);
+
+        var tooltipText = createSvgElement("text");
+        tooltipText.setAttribute("class", "chart-label-tooltip-text");
+        tooltipText.setAttribute("x", String(tooltip.textX));
+        tooltipText.setAttribute("y", String(tooltip.textY));
+        tooltipText.setAttribute("text-anchor", "middle");
+        tooltipText.setAttribute("dominant-baseline", "middle");
+        tooltipText.setAttribute("font-family", chartSettings.fontFamily);
+        tooltipText.setAttribute(
+          "font-size",
+          String(Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx))
+        );
+        tooltipText.textContent = label.fullText;
+        tooltipGroup.appendChild(tooltipText);
+
+        elements.chartRoot.appendChild(tooltipGroup);
       }
 
       var text = createSvgElement("text");
@@ -655,7 +843,10 @@ const STANDALONE_SCRIPT = `
       text.setAttribute("dominant-baseline", "middle");
       text.setAttribute("transform", "rotate(" + label.rotate + " " + label.x + " " + label.y + ")");
       text.setAttribute("font-family", chartSettings.fontFamily);
-      text.setAttribute("font-size", String(Math.max(8, chartSettings.fontSizePx)));
+      text.setAttribute(
+        "font-size",
+        String(Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx))
+      );
       text.textContent = label.text;
       elements.chartRoot.appendChild(text);
     }
@@ -698,6 +889,212 @@ const STANDALONE_SCRIPT = `
     centerSub.setAttribute("class", "chart-center-sub");
     centerSub.textContent = activeShare.toFixed(1) + "% of view";
     elements.chartRoot.appendChild(centerSub);
+  }
+
+  function ensureHiddenPattern() {
+    if (!elements.chartSvg) {
+      return;
+    }
+
+    var existing = elements.chartSvg.querySelector("#chart-hidden-pattern");
+    if (existing) {
+      return;
+    }
+
+    var defs = elements.chartSvg.querySelector("defs");
+    if (!defs) {
+      defs = createSvgElement("defs");
+      elements.chartSvg.insertBefore(defs, elements.chartSvg.firstChild);
+    }
+
+    var pattern = createSvgElement("pattern");
+    pattern.setAttribute("id", "chart-hidden-pattern");
+    pattern.setAttribute("patternUnits", "userSpaceOnUse");
+    pattern.setAttribute("x", "0");
+    pattern.setAttribute("y", "0");
+    pattern.setAttribute("width", "7");
+    pattern.setAttribute("height", "7");
+
+    var lineA = createSvgElement("line");
+    lineA.setAttribute("x1", "0");
+    lineA.setAttribute("y1", "0");
+    lineA.setAttribute("x2", "3.5");
+    lineA.setAttribute("y2", "3.5");
+    lineA.setAttribute("stroke", "rgba(16,36,27,0.35)");
+    lineA.setAttribute("stroke-width", "0.8");
+    pattern.appendChild(lineA);
+
+    var lineB = createSvgElement("line");
+    lineB.setAttribute("x1", "3.5");
+    lineB.setAttribute("y1", "7");
+    lineB.setAttribute("x2", "7");
+    lineB.setAttribute("y2", "3.5");
+    lineB.setAttribute("stroke", "rgba(16,36,27,0.35)");
+    lineB.setAttribute("stroke-width", "0.8");
+    pattern.appendChild(lineB);
+
+    defs.appendChild(pattern);
+  }
+
+  function createWedgeRenderPlan(layout, maxDepth, labelFontSize, radiusScale) {
+    if (!layout || !layout.nodes || layout.nodes.length === 0) {
+      return { visibleNodes: [] };
+    }
+
+    var visibleNodes = layout.nodes.filter(function (node) {
+      return node.depth > 0;
+    });
+    if (visibleNodes.length === 0 || maxDepth <= 0) {
+      return {
+        visibleNodes: visibleNodes.map(function (node) {
+          return {
+            node: node,
+            isGroupedHidden: false,
+            hiddenCount: 0,
+            key: pathKey(node.path),
+            colorPath: node.path,
+            interactionPath: node.path,
+            outerDepth: node.depth,
+          };
+        }),
+      };
+    }
+
+    var minVisibleWidth = Math.max(MIN_LABEL_FONT_SIZE, labelFontSize) * 2.3;
+    var childrenByParent = new Map();
+    var visiblePathKeys = new Set(
+      visibleNodes.map(function (node) {
+        return pathKey(node.path);
+      })
+    );
+    for (var index = 0; index < visibleNodes.length; index += 1) {
+      var current = visibleNodes[index];
+      var parent = pathKey(current.path.slice(0, -1));
+      var children = childrenByParent.get(parent);
+      if (children) {
+        children.push(current);
+      } else {
+        childrenByParent.set(parent, [current]);
+      }
+    }
+
+    childrenByParent.forEach(function (children) {
+      children.sort(function (left, right) {
+        if (left.startAngle !== right.startAngle) {
+          return left.startAngle - right.startAngle;
+        }
+        return left.endAngle - right.endAngle;
+      });
+    });
+
+    var groupedNodes = [];
+    childrenByParent.forEach(function (children, parentKey) {
+      var cursor = 0;
+      var hiddenGroupIndex = 0;
+      while (cursor < children.length) {
+        var child = children[cursor];
+        if (!shouldGroupHiddenChild(child, radiusScale, minVisibleWidth)) {
+          groupedNodes.push({
+            node: child,
+            isGroupedHidden: false,
+            hiddenCount: 0,
+            key: pathKey(child.path),
+            colorPath: child.path,
+            interactionPath: child.path,
+            outerDepth: child.depth,
+          });
+          cursor += 1;
+          continue;
+        }
+
+        var runEnd = cursor;
+        while (
+          runEnd + 1 < children.length &&
+          shouldGroupHiddenChild(children[runEnd + 1], radiusScale, minVisibleWidth)
+        ) {
+          runEnd += 1;
+        }
+
+        var run = children.slice(cursor, runEnd + 1);
+        var first = run[0];
+        var last = run[run.length - 1];
+        var parentPath = first.path.slice(0, -1);
+        var interactionPath = parentPath.length > 0 ? parentPath : first.path;
+        var groupedColorPath = resolveGroupedColorPath(parentPath, first.path, visiblePathKeys);
+        var hiddenCount = run.length;
+        var groupedMagnitude = run.reduce(function (sum, item) {
+          return sum + item.magnitude;
+        }, 0);
+
+        groupedNodes.push({
+          node: {
+            path: first.path.slice(0, -1).concat([String(hiddenCount) + " more"]),
+            name: String(hiddenCount) + " more",
+            depth: first.depth,
+            magnitude: groupedMagnitude,
+            startAngle: first.startAngle,
+            endAngle: last.endAngle,
+          },
+          isGroupedHidden: true,
+          hiddenCount: hiddenCount,
+          key: parentKey + "/[" + hiddenCount + "-more-" + hiddenGroupIndex + "]",
+          colorPath: groupedColorPath,
+          interactionPath: interactionPath,
+          outerDepth: first.depth,
+        });
+
+        hiddenGroupIndex += 1;
+        cursor = runEnd + 1;
+      }
+    });
+
+    groupedNodes.sort(function (left, right) {
+      if (left.node.depth !== right.node.depth) {
+        return left.node.depth - right.node.depth;
+      }
+      if (left.node.startAngle !== right.node.startAngle) {
+        return left.node.startAngle - right.node.startAngle;
+      }
+      if (left.node.endAngle !== right.node.endAngle) {
+        return left.node.endAngle - right.node.endAngle;
+      }
+      return left.key.localeCompare(right.key);
+    });
+
+    var parentKeys = new Set(groupedNodes.map(function (entry) {
+      return pathKey(entry.node.path.slice(0, -1));
+    }));
+    return {
+      visibleNodes: groupedNodes.map(function (entry) {
+        return {
+          node: entry.node,
+          isGroupedHidden: entry.isGroupedHidden,
+          hiddenCount: entry.hiddenCount,
+          key: entry.key,
+          colorPath: entry.colorPath,
+          interactionPath: entry.interactionPath,
+          outerDepth: parentKeys.has(pathKey(entry.node.path)) ? entry.node.depth : maxDepth,
+        };
+      }),
+    };
+  }
+
+  function shouldGroupHiddenChild(child, radiusScale, minVisibleWidth) {
+    var innerRadius = radiusScale(child.depth - 1);
+    var outerRadius = radiusScale(child.depth);
+    var angleSpan = Math.max(0, child.endAngle - child.startAngle);
+    var widthEstimate = angleSpan * (innerRadius + outerRadius);
+    return widthEstimate < minVisibleWidth;
+  }
+
+  function resolveGroupedColorPath(parentPath, fallbackPath, visiblePathKeys) {
+    for (var length = parentPath.length; length >= 2; length -= 1) {
+      var candidate = parentPath.slice(0, length);
+      if (visiblePathKeys.has(pathKey(candidate))) {
+        return candidate;
+      }
+    }
+    return fallbackPath;
   }
 
   function renderDetails(activeNode, activePath, activeMagnitude, activeShare) {
@@ -763,7 +1160,7 @@ const STANDALONE_SCRIPT = `
 
     var topLevel = layout.nodes
       .filter(function (node) {
-        return node.depth === 1;
+        return node.depth === 1 && !isUnclassifiedNodeName(node.name);
       })
       .sort(function (left, right) {
         if (right.magnitude !== left.magnitude) {
@@ -792,7 +1189,7 @@ const STANDALONE_SCRIPT = `
 
       var dot = document.createElement("span");
       dot.className = "legend-dot";
-      dot.style.background = kronaColors.get(pathKey(node.path)) || KRONA_UNCLASSIFIED_COLOR;
+      dot.style.background = resolveNodeFillColor(kronaColors, [node.path], KRONA_UNCLASSIFIED_COLOR);
       keyButton.appendChild(dot);
 
       var label = document.createElement("span");
@@ -848,6 +1245,9 @@ const STANDALONE_SCRIPT = `
     if (normalized.length === 0) {
       return;
     }
+    if (!findNodeByPath(dataset.tree, normalized)) {
+      return;
+    }
     var focusUnchanged = state.focusPath && pathEquals(state.focusPath, normalized);
 
     state.focusPath = normalized;
@@ -887,14 +1287,18 @@ const STANDALONE_SCRIPT = `
     var focusedRoot = resolveFocusedNode(root, normalizedFocusPath) || root;
     var pathPrefix = normalizedFocusPath ? normalizedFocusPath.slice(0, -1) : [];
     var totalMagnitude = computeEffectiveMagnitude(focusedRoot);
+    var collapseRedundant = chartSettings.collapseRedundant !== false;
+    var rootHasMultipleChildren = Array.isArray(dataset.tree.children) && dataset.tree.children.length > 1;
     var depthLimit = depthLimitInput <= 0 ? null : depthLimitInput;
     var nodes = flattenForLayout({
       node: focusedRoot,
-      rootMagnitude: totalMagnitude,
       pathPrefix: pathPrefix,
       depth: 0,
       startAngle: 0,
+      angleSpan: totalMagnitude > 0 ? Math.PI * 2 : 0,
       depthLimit: depthLimit,
+      collapseRedundant: collapseRedundant,
+      rootHasMultipleChildren: rootHasMultipleChildren,
     });
 
     return {
@@ -906,7 +1310,7 @@ const STANDALONE_SCRIPT = `
   function flattenForLayout(args) {
     var currentPath = args.pathPrefix.concat([args.node.name]);
     var nodeMagnitude = computeEffectiveMagnitude(args.node);
-    var angleSpan = args.rootMagnitude === 0 ? 0 : (nodeMagnitude / args.rootMagnitude) * Math.PI * 2;
+    var angleSpan = Math.max(0, args.angleSpan);
 
     var currentNode = {
       path: currentPath,
@@ -926,40 +1330,71 @@ const STANDALONE_SCRIPT = `
       return nodes;
     }
 
-    var sortedChildren = args.node.children
+    var resolvedChildren = args.node.children
       .map(function (child) {
+        var collapsed = resolveCollapsedChild(
+          child,
+          args.collapseRedundant,
+          args.rootHasMultipleChildren
+        );
         return {
-          child: child,
-          magnitude: computeEffectiveMagnitude(child),
+          child: collapsed.node,
+          pathSegments: collapsed.pathSegments,
+          magnitude: computeEffectiveMagnitude(collapsed.node),
         };
       })
       .filter(function (entry) {
         return entry.magnitude > 0;
-      })
-      .sort(function (left, right) {
-        if (right.magnitude !== left.magnitude) {
-          return right.magnitude - left.magnitude;
-        }
-        return left.child.name.localeCompare(right.child.name);
       });
 
-    var childrenTotalMagnitude = sortedChildren.reduce(function (sum, entry) {
+    var childEntries = resolvedChildren.map(function (entry) {
+      return {
+        child: entry.child,
+        pathSegments: entry.pathSegments,
+        magnitude: entry.magnitude,
+        isUnclassified: false,
+      };
+    });
+
+    var childrenTotalMagnitude = childEntries.reduce(function (sum, entry) {
       return sum + entry.magnitude;
     }, 0);
+    var unclassifiedMagnitude = Math.max(0, nodeMagnitude - childrenTotalMagnitude);
+    if (unclassifiedMagnitude > 0.000000001) {
+      childEntries.push({
+        child: null,
+        pathSegments: [getUnclassifiedName(args.node.name)],
+        magnitude: unclassifiedMagnitude,
+        isUnclassified: true,
+      });
+    }
 
     var childStartAngle = args.startAngle;
-    for (var index = 0; index < sortedChildren.length; index += 1) {
-      var entry = sortedChildren[index];
-      var childAngleSpan = childrenTotalMagnitude === 0 ? 0 : (entry.magnitude / childrenTotalMagnitude) * angleSpan;
-      var childNodes = flattenForLayout({
-        node: entry.child,
-        rootMagnitude: args.rootMagnitude,
-        pathPrefix: currentPath,
-        depth: args.depth + 1,
-        startAngle: childStartAngle,
-        depthLimit: args.depthLimit,
-      });
-      nodes = nodes.concat(childNodes);
+    for (var index = 0; index < childEntries.length; index += 1) {
+      var entry = childEntries[index];
+      var childAngleSpan = nodeMagnitude === 0 ? 0 : (entry.magnitude / nodeMagnitude) * angleSpan;
+      if (entry.isUnclassified || !entry.child) {
+        nodes.push({
+          path: currentPath.concat(entry.pathSegments),
+          name: entry.pathSegments[entry.pathSegments.length - 1] || "Unclassified",
+          depth: args.depth + 1,
+          magnitude: entry.magnitude,
+          startAngle: childStartAngle,
+          endAngle: childStartAngle + childAngleSpan,
+        });
+      } else {
+        var childNodes = flattenForLayout({
+          node: entry.child,
+          pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
+          depth: args.depth + 1,
+          startAngle: childStartAngle,
+          angleSpan: childAngleSpan,
+          depthLimit: args.depthLimit,
+          collapseRedundant: args.collapseRedundant,
+          rootHasMultipleChildren: args.rootHasMultipleChildren,
+        });
+        nodes = nodes.concat(childNodes);
+      }
       childStartAngle += childAngleSpan;
     }
 
@@ -983,6 +1418,49 @@ const STANDALONE_SCRIPT = `
       return 0;
     }
     return numberValue;
+  }
+
+  function getUnclassifiedName(parentName) {
+    return "[other " + String(parentName) + "]";
+  }
+
+  function resolveCollapsedChild(node, collapseRedundant, rootHasMultipleChildren) {
+    var pathSegments = [node.name];
+    var candidate = node;
+
+    if (!collapseRedundant) {
+      return {
+        node: candidate,
+        pathSegments: pathSegments,
+      };
+    }
+
+    while (isCollapsibleNode(candidate, rootHasMultipleChildren)) {
+      var child = Array.isArray(candidate.children) ? candidate.children[0] : null;
+      if (!child) {
+        break;
+      }
+      candidate = child;
+      pathSegments.push(child.name);
+    }
+
+    return {
+      node: candidate,
+      pathSegments: pathSegments,
+    };
+  }
+
+  function isCollapsibleNode(node, rootHasMultipleChildren) {
+    if (!Array.isArray(node.children) || node.children.length !== 1) {
+      return false;
+    }
+    var child = node.children[0];
+    var nodeMagnitude = computeEffectiveMagnitude(node);
+    var childMagnitude = computeEffectiveMagnitude(child);
+    if (Math.abs(nodeMagnitude - childMagnitude) > 0.000000001) {
+      return false;
+    }
+    return rootHasMultipleChildren || (Array.isArray(child.children) && child.children.length > 0);
   }
 
   function resolveFocusedNode(root, focusedPath) {
@@ -1132,8 +1610,8 @@ const STANDALONE_SCRIPT = `
 
   function polarPoint(radius, angle) {
     return {
-      x: Math.cos(angle - Math.PI / 2) * radius,
-      y: Math.sin(angle - Math.PI / 2) * radius,
+      x: Math.cos(angle + Math.PI / 2) * radius,
+      y: Math.sin(angle + Math.PI / 2) * radius,
     };
   }
 
@@ -1147,16 +1625,48 @@ const STANDALONE_SCRIPT = `
     };
   }
 
-  function createWedgeLabel(node, innerRadius, outerRadius, totalMagnitude, maxDepth) {
-    var isOuterRing = maxDepth <= 1 || node.depth === maxDepth;
+  function computeLayoutDataMaxDepth(layout) {
+    if (!layout || !layout.nodes || layout.nodes.length === 0) {
+      return 0;
+    }
+
+    var maxDepth = 0;
+    for (var index = 0; index < layout.nodes.length; index += 1) {
+      var node = layout.nodes[index];
+      if (node.depth <= 0 || isUnclassifiedNodeName(node.name)) {
+        continue;
+      }
+      if (node.depth > maxDepth) {
+        maxDepth = node.depth;
+      }
+    }
+
+    if (maxDepth > 0) {
+      return maxDepth;
+    }
+    return maxNodeDepth(layout.nodes);
+  }
+
+  function resolveRenderDepth(treeMaxDepth, depthLimit) {
+    if (treeMaxDepth <= 0) {
+      return 0;
+    }
+    if (depthLimit <= 0) {
+      return treeMaxDepth;
+    }
+    return Math.min(depthLimit, treeMaxDepth);
+  }
+
+  function createWedgeLabel(node, innerRadius, outerRadius, maxDepth, outerDepth, fontSizePx) {
+    var isOuterRing = maxDepth <= 1 || outerDepth >= maxDepth;
     var angleSpan = node.endAngle - node.startAngle;
     var ringThickness = outerRadius - innerRadius;
-    var radius = innerRadius + ringThickness * 0.56;
+    var radius = innerRadius + ringThickness * (isOuterRing ? 0.6 : 0.56);
     var tangentialSpan = radius * angleSpan;
 
-    var minAngleSpan = isOuterRing ? 0.045 : 0.09;
-    var minRingThickness = isOuterRing ? 12 : 16;
-    var minTangentialSpan = isOuterRing ? 12 : 42;
+    var minAngleSpan = isOuterRing ? 0.007 : 0.04;
+    var minRingThickness = isOuterRing ? 6 : 10;
+    var minTangentialSpan = isOuterRing ? 2 : 10;
 
     if (
       angleSpan < minAngleSpan ||
@@ -1166,15 +1676,16 @@ const STANDALONE_SCRIPT = `
       return null;
     }
 
-    var percentage = totalMagnitude > 0 ? (node.magnitude / totalMagnitude) * 100 : 0;
     var midAngle = (node.startAngle + node.endAngle) / 2;
     var point = polarPoint(radius, midAngle);
 
+    var approximateCharWidth = Math.max(4, fontSizePx * 0.58);
     var availableTextLength = isOuterRing
-      ? Math.max(0, ringThickness - 6)
-      : Math.max(0, tangentialSpan - 4);
-    var maxChars = Math.max(isOuterRing ? 4 : 8, Math.floor(availableTextLength / 7.2));
-    var text = ellipsize(node.name + " " + percentage.toFixed(1) + "%", maxChars);
+      ? Math.max(0, ringThickness - fontSizePx * 0.45)
+      : Math.max(0, tangentialSpan - fontSizePx * 0.35);
+    var maxChars = Math.max(isOuterRing ? 4 : 6, Math.floor(availableTextLength / approximateCharWidth));
+    var isTruncated = node.name.length > maxChars;
+    var text = ellipsize(node.name, maxChars);
     var baseRotation = isOuterRing ? (midAngle * 180) / Math.PI - 90 : (midAngle * 180) / Math.PI;
     var normalizedRotation = normalizeDegrees(baseRotation);
     var flip = normalizedRotation > 90 || normalizedRotation < -90;
@@ -1182,10 +1693,31 @@ const STANDALONE_SCRIPT = `
 
     return {
       text: text,
+      fullText: node.name,
+      isTruncated: isTruncated,
       x: point.x,
       y: point.y,
       rotate: rotate,
       anchor: isOuterRing ? (flip ? "end" : "start") : "middle",
+    };
+  }
+
+  function createHoverLabelTooltip(label, fontSizePx) {
+    var horizontalPadding = 9;
+    var verticalPadding = 5;
+    var approxTextWidth = Math.max(20, label.fullText.length * fontSizePx * 0.58);
+    var width = approxTextWidth + horizontalPadding * 2;
+    var height = fontSizePx + verticalPadding * 2 + 2;
+    var centerX = label.x;
+    var centerY = label.y - fontSizePx * 1.2;
+
+    return {
+      x: centerX - width / 2,
+      y: centerY - height / 2,
+      width: width,
+      height: height,
+      textX: centerX,
+      textY: centerY,
     };
   }
 
@@ -1205,13 +1737,24 @@ const STANDALONE_SCRIPT = `
     var root = layout.nodes.find(function (node) {
       return node.depth === 0;
     }) || layout.nodes[0];
+    var existingPathKeys = new Set(
+      layout.nodes.map(function (node) {
+        return pathKey(node.path);
+      })
+    );
     var childrenByParent = new Map();
     for (var index = 0; index < layout.nodes.length; index += 1) {
       var node = layout.nodes[index];
+      if (isUnclassifiedNodeName(node.name)) {
+        colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
+        continue;
+      }
       if (node.depth === 0) {
         continue;
       }
-      var parent = pathKey(node.path.slice(0, -1));
+      var parent = pathKey(
+        resolveNearestExistingAncestorPath(node.path.slice(0, -1), existingPathKeys)
+      );
       var children = childrenByParent.get(parent);
       if (children) {
         children.push(node);
@@ -1229,7 +1772,7 @@ const STANDALONE_SCRIPT = `
       });
     });
 
-    var maxDepth = maxNodeDepth(layout.nodes);
+    var maxDepth = computeLayoutDataMaxDepth(layout);
     var depthNormalizer = maxDepth > 8 ? 8 : Math.max(maxDepth, 1);
     var lightnessFactor = (KRONA_LIGHTNESS_MAX - KRONA_LIGHTNESS_BASE) / depthNormalizer;
 
@@ -1240,7 +1783,7 @@ const STANDALONE_SCRIPT = `
       }
 
       if (node.depth > 0) {
-        if (node.magnitude <= 0) {
+        if (node.magnitude <= 0 || isUnclassifiedNodeName(node.name)) {
           colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
         } else {
           var lightness = Math.min(
@@ -1287,6 +1830,32 @@ const STANDALONE_SCRIPT = `
 
     assignColor(root, 0, 1);
     return colors;
+  }
+
+  function resolveNodeFillColor(colors, candidatePaths, fallbackColor) {
+    for (var index = 0; index < candidatePaths.length; index += 1) {
+      var candidate = candidatePaths[index];
+      if (!Array.isArray(candidate) || candidate.length === 0) {
+        continue;
+      }
+      for (var length = candidate.length; length >= 1; length -= 1) {
+        var color = colors.get(pathKey(candidate.slice(0, length)));
+        if (typeof color === "string" && color.length > 0) {
+          return color;
+        }
+      }
+    }
+    return fallbackColor;
+  }
+
+  function resolveNearestExistingAncestorPath(path, existingPathKeys) {
+    for (var length = path.length; length >= 0; length -= 1) {
+      var candidate = path.slice(0, length);
+      if (existingPathKeys.has(pathKey(candidate))) {
+        return candidate;
+      }
+    }
+    return [];
   }
 
   function lerp(value, rangeStart, rangeEnd, outputStart, outputEnd) {
@@ -1367,6 +1936,10 @@ const STANDALONE_SCRIPT = `
     return path.join("/");
   }
 
+  function isUnclassifiedNodeName(name) {
+    return String(name).trim().toLowerCase().indexOf("[other ") === 0;
+  }
+
   function normalizeDegrees(angle) {
     var normalized = angle;
     while (normalized <= -180) {
@@ -1385,7 +1958,8 @@ const STANDALONE_SCRIPT = `
       borderColor: "#b7c2bc",
       wedgeStrokeWidth: 1,
       wedgeStrokeColor: "#ffffff",
-      fontFamily: "IBM Plex Sans",
+      collapseRedundant: true,
+      fontFamily: "sans-serif",
       fontSizePx: 12,
       width: "fit",
       height: "fit",
@@ -1418,10 +1992,14 @@ const STANDALONE_SCRIPT = `
         typeof raw.wedgeStrokeColor === "string"
           ? raw.wedgeStrokeColor
           : defaults.wedgeStrokeColor,
+      collapseRedundant:
+        typeof raw.collapseRedundant === "boolean"
+          ? raw.collapseRedundant
+          : defaults.collapseRedundant,
       fontFamily: typeof raw.fontFamily === "string" ? raw.fontFamily : defaults.fontFamily,
       fontSizePx:
         typeof raw.fontSizePx === "number" && Number.isFinite(raw.fontSizePx)
-          ? Math.max(8, raw.fontSizePx)
+          ? Math.max(MIN_LABEL_FONT_SIZE, raw.fontSizePx)
           : defaults.fontSizePx,
       width: normalizedWidth,
       height: normalizedHeight,
@@ -1431,7 +2009,7 @@ const STANDALONE_SCRIPT = `
 
   function resolveFontFamily(fontFamily) {
     if (typeof fontFamily !== "string" || fontFamily.trim().length === 0) {
-      return "IBM Plex Sans, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      return "sans-serif";
     }
     if (fontFamily.includes(",")) {
       return fontFamily;
@@ -1529,6 +2107,9 @@ const STANDALONE_SCRIPT = `
     var style = createSvgElement("style");
     style.textContent =
       ".chart-wedge-label{fill:#0e2b1f;font-weight:600}" +
+      ".chart-label-tooltip{pointer-events:none}" +
+      ".chart-label-tooltip-box{fill:#ffffff}" +
+      ".chart-label-tooltip-text{fill:#102a1f;font-weight:600}" +
       ".chart-center-disc{fill:#f4faf7;stroke:#c4d8cc;stroke-width:1.4}" +
       ".chart-center-title{font-size:13px;font-weight:700;fill:#102a1f}" +
       ".chart-center-metric{font-size:15px;font-weight:700;fill:#174936}" +
@@ -1573,7 +2154,7 @@ const STANDALONE_SCRIPT = `
 
   function showFatal(message) {
     document.body.innerHTML =
-      '<div style="padding:24px;font-family:IBM Plex Sans,sans-serif"><h1>Jowna Export</h1><p>' +
+      '<div style="padding:24px;font-family:sans-serif"><h1>Jowna Export</h1><p>' +
       message +
       "</p></div>";
   }

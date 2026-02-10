@@ -53,6 +53,7 @@ export interface Project {
   updatedAt: IsoDateTime;
   datasetIds: DatasetId[];
   activeDatasetId: DatasetId | null;
+  chartSettings?: ChartSettings;
 }
 
 export interface ChartSettings {
@@ -61,6 +62,7 @@ export interface ChartSettings {
   borderColor: string;
   wedgeStrokeWidth: number;
   wedgeStrokeColor: string;
+  collapseRedundant: boolean;
   fontFamily: string;
   fontSizePx: number;
   width: number | "fit";

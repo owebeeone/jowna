@@ -10,6 +10,7 @@ describe("SunburstChartRenderer", () => {
     borderColor: "#111",
     wedgeStrokeWidth: 1,
     wedgeStrokeColor: "#333",
+    collapseRedundant: true,
     fontFamily: "IBM Plex Sans",
     fontSizePx: 12,
     width: "fit" as const,
@@ -40,7 +41,7 @@ describe("SunburstChartRenderer", () => {
     expect(layout.nodes).toHaveLength(3);
   });
 
-  it("keeps absolute paths and sorts child wedges by magnitude when focused", () => {
+  it("keeps absolute paths and preserves input child order when focused", () => {
     const renderer = new SunburstChartRenderer();
     const root: TreeNode = {
       name: "Root",
@@ -65,8 +66,46 @@ describe("SunburstChartRenderer", () => {
     });
 
     expect(layout.nodes[0]?.path).toEqual(["Root", "A"]);
-    expect(layout.nodes[1]?.path).toEqual(["Root", "A", "High"]);
-    expect(layout.nodes[2]?.path).toEqual(["Root", "A", "Low"]);
+    expect(layout.nodes[1]?.path).toEqual(["Root", "A", "Low"]);
+    expect(layout.nodes[2]?.path).toEqual(["Root", "A", "High"]);
+  });
+
+  it("keeps child wedges contiguous and adds unclassified wedge when parent exceeds children", () => {
+    const renderer = new SunburstChartRenderer();
+    const root: TreeNode = {
+      name: "Root",
+      magnitude: 0,
+      children: [
+        {
+          name: "A",
+          magnitude: 100,
+          children: [
+            { name: "High", magnitude: 30 },
+            { name: "Low", magnitude: 10 },
+          ],
+        },
+      ],
+    };
+
+    const layout = renderer.computeLayout({
+      root,
+      settings,
+      focusedPath: ["Root", "A"],
+      depthLimit: null,
+    });
+
+    const focusedNode = layout.nodes[0]!;
+    const firstChild = layout.nodes[1]!;
+    const secondChild = layout.nodes[2]!;
+    const unclassifiedChild = layout.nodes[3]!;
+
+    expect(focusedNode.startAngle).toBe(0);
+    expect(focusedNode.endAngle).toBeCloseTo(Math.PI * 2, 8);
+    expect(firstChild.startAngle).toBeCloseTo(focusedNode.startAngle, 8);
+    expect(firstChild.endAngle).toBeCloseTo(secondChild.startAngle, 8);
+    expect(secondChild.endAngle).toBeCloseTo(unclassifiedChild.startAngle, 8);
+    expect(unclassifiedChild.endAngle).toBeCloseTo(focusedNode.endAngle, 8);
+    expect(unclassifiedChild.name).toBe("[other A]");
   });
 });
 

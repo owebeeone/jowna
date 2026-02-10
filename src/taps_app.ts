@@ -1,5 +1,5 @@
 import { createAtomValueTap, createFunctionTap, type Tap } from "@owebeeone/grip-react";
-import type { Dataset, Project } from "./domain";
+import type { ChartSettings, Dataset, Project, TreeNode } from "./domain";
 import {
   DEFAULT_CHART_SETTINGS,
   DEFAULT_IMPORT_PARAMETERS,
@@ -56,6 +56,7 @@ import {
   IMPORT_WARNINGS_STATE_TAP,
   JOWNA_ACTIONS,
   type JownaActions,
+  type ProjectImportReport,
   NEW_PROJECT_NAME,
   NEW_PROJECT_NAME_TAP,
   PREVIEW_FILTER,
@@ -69,6 +70,9 @@ import { createIndexedDbStorageGateway } from "./storage/indexeddb";
 import { SunburstChartRenderer } from "./features/chart";
 import {
   createProjectArchive,
+  looksLikeKronaHtml,
+  materializeParsedKronaHtmlProject,
+  parseKronaHtmlProject,
   materializeImportedProject,
   parseProjectArchive,
   PROJECT_ARCHIVE_MIME_TYPE,
@@ -175,6 +179,9 @@ export function registerJownaTaps(): void {
     initial: CHART_SETTINGS_STATE.defaultValue ?? DEFAULT_CHART_SETTINGS,
     handleGrip: CHART_SETTINGS_STATE_TAP,
   });
+  let defaultProjectChartSettings = cloneChartSettings(
+    CHART_SETTINGS_STATE.defaultValue ?? DEFAULT_CHART_SETTINGS,
+  );
   const chartFocusPathTap = createAtomValueTap(CHART_FOCUS_PATH, {
     initial: CHART_FOCUS_PATH.defaultValue ?? null,
     handleGrip: CHART_FOCUS_PATH_TAP,
@@ -298,6 +305,7 @@ export function registerJownaTaps(): void {
       } else {
         datasetsTap.set([]);
         activeDatasetIdTap.set(null);
+        chartSettingsTap.set(cloneChartSettings(defaultProjectChartSettings));
         importPopoverOpenTap.set(true);
       }
     },
@@ -312,6 +320,7 @@ export function registerJownaTaps(): void {
         updatedAt: timestamp,
         datasetIds: [],
         activeDatasetId: null,
+        chartSettings: cloneChartSettings(chartSettingsTap.get() ?? defaultProjectChartSettings),
       };
 
       await storage.projects.saveProject(project);
@@ -386,21 +395,82 @@ export function registerJownaTaps(): void {
 
     importProjectArchive: async (file) => {
       const raw = await file.text();
-      const archive = parseProjectArchive(raw);
-      const timestamp = nowIso();
-      const imported = materializeImportedProject({
-        archive,
-        nowIso: timestamp,
-        createId,
-      });
 
-      for (const dataset of imported.datasets) {
-        await storage.datasets.saveDataset(dataset);
+      const importFromArchive = async (): Promise<ProjectImportReport> => {
+        const archive = parseProjectArchive(raw);
+        const timestamp = nowIso();
+        const imported = materializeImportedProject({
+          archive,
+          nowIso: timestamp,
+          createId,
+        });
+
+        for (const dataset of imported.datasets) {
+          await storage.datasets.saveDataset(dataset);
+        }
+        await storage.projects.saveProject(imported.project);
+        await actions.refreshProjects();
+        await actions.openProject(imported.project.id);
+
+        return {
+          mode: "archive",
+          projectName: imported.project.name,
+          datasetCount: imported.datasets.length,
+          warnings: [],
+        };
+      };
+
+      const importFromKronaHtml = async (): Promise<ProjectImportReport> => {
+        const parsed = parseKronaHtmlProject({
+          name: file.name,
+          content: raw,
+        });
+        const timestamp = nowIso();
+        const imported = materializeParsedKronaHtmlProject({
+          parsed,
+          nowIso: timestamp,
+          createId,
+        });
+
+        for (const dataset of imported.datasets) {
+          await storage.datasets.saveDataset(dataset);
+        }
+        await storage.projects.saveProject(imported.project);
+        await actions.refreshProjects();
+        await actions.openProject(imported.project.id);
+
+        return {
+          mode: "krona-html",
+          projectName: imported.project.name,
+          datasetCount: imported.datasets.length,
+          warnings: imported.warnings,
+        };
+      };
+
+      if (looksLikeKronaHtml(file.name, raw)) {
+        try {
+          return await importFromKronaHtml();
+        } catch (kronaError) {
+          try {
+            return await importFromArchive();
+          } catch {
+            throw kronaError;
+          }
+        }
       }
-      await storage.projects.saveProject(imported.project);
 
-      await actions.refreshProjects();
-      await actions.openProject(imported.project.id);
+      try {
+        return await importFromArchive();
+      } catch (archiveError) {
+        try {
+          return await importFromKronaHtml();
+        } catch (kronaError) {
+          throw new Error(
+            `Unsupported import file. Archive parse failed: ${toErrorMessage(archiveError)}. ` +
+              `Krona HTML parse failed: ${toErrorMessage(kronaError)}.`,
+          );
+        }
+      }
     },
 
     renameDataset: async (datasetId, nextName) => {
@@ -525,10 +595,46 @@ export function registerJownaTaps(): void {
     },
 
     openChart: (datasetId) => {
-      if (datasetId) {
-        activeDatasetIdTap.set(datasetId);
+      const resolvedDatasetId = datasetId ?? activeDatasetIdTap.get();
+      if (resolvedDatasetId) {
+        activeDatasetIdTap.set(resolvedDatasetId);
+        const datasets = datasetsTap.get() ?? [];
+        const dataset = datasets.find((entry) => entry.id === resolvedDatasetId) ?? null;
+        if (dataset) {
+          chartDepthLimitTap.set(computeTreeMaxDepth(dataset.tree));
+        }
       }
       appViewTap.set("chart");
+    },
+
+    setProjectChartSettings: async (settings) => {
+      const activeProjectId = activeProjectIdTap.get();
+      chartSettingsTap.set(cloneChartSettings(settings));
+
+      if (!activeProjectId) {
+        return;
+      }
+
+      const project = await storage.projects.getProject(activeProjectId);
+      if (!project) {
+        return;
+      }
+
+      await storage.projects.saveProject({
+        ...project,
+        chartSettings: cloneChartSettings(settings),
+      });
+
+      projectsTap.update((projects) =>
+        projects.map((current) =>
+          current.id === activeProjectId
+            ? {
+                ...current,
+                chartSettings: cloneChartSettings(settings),
+              }
+            : current,
+        ),
+      );
     },
 
     backToSelection: () => {
@@ -540,6 +646,14 @@ export function registerJownaTaps(): void {
       if (normalized.length === 0) {
         return;
       }
+
+      const activeDatasetId = activeDatasetIdTap.get();
+      const activeDataset =
+        (datasetsTap.get() ?? []).find((dataset) => dataset.id === activeDatasetId) ?? null;
+      if (activeDataset && !containsTreePath(activeDataset.tree, normalized)) {
+        return;
+      }
+
       chartFocusPathTap.set(normalized);
       chartSelectedPathTap.set(normalized);
       chartHoverPathTap.set(null);
@@ -603,7 +717,8 @@ export function registerJownaTaps(): void {
   async function bootstrap(): Promise<void> {
     const settings = await storage.settings.loadSettings();
     if (settings?.chart) {
-      chartSettingsTap.set(settings.chart);
+      defaultProjectChartSettings = cloneChartSettings(settings.chart);
+      chartSettingsTap.set(defaultProjectChartSettings);
     } else {
       await storage.settings.saveSettings({
         chart: chartSettingsTap.get() ?? DEFAULT_CHART_SETTINGS,
@@ -626,6 +741,8 @@ export function registerJownaTaps(): void {
     }
 
     const project = await storage.projects.getProject(projectId);
+    const projectChartSettings = project?.chartSettings ?? defaultProjectChartSettings;
+    chartSettingsTap.set(cloneChartSettings(projectChartSettings));
     const preferredDatasetId = project?.activeDatasetId ?? null;
     const nextDatasetId =
       preferredDatasetId && datasets.some((dataset) => dataset.id === preferredDatasetId)
@@ -683,6 +800,58 @@ function normalizeNonEmpty(value: string, fallback: string): string {
 
 function normalizePath(path: string[]): string[] {
   return path.map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+}
+
+function containsTreePath(root: TreeNode, path: string[]): boolean {
+  if (path.length === 0 || path[0] !== root.name) {
+    return false;
+  }
+
+  let cursor: TreeNode = root;
+  for (let index = 1; index < path.length; index += 1) {
+    const next = cursor.children?.find((child) => child.name === path[index]);
+    if (!next) {
+      return false;
+    }
+    cursor = next;
+  }
+  return true;
+}
+
+function cloneChartSettings(settings: ChartSettings): ChartSettings {
+  return {
+    ...settings,
+    colorScheme: Array.isArray(settings.colorScheme)
+      ? [...settings.colorScheme]
+      : settings.colorScheme,
+  };
+}
+
+function computeTreeMaxDepth(root: TreeNode): number {
+  return visitTreeDepth(root, 0);
+}
+
+function visitTreeDepth(node: TreeNode, depth: number): number {
+  const children = node.children ?? [];
+  if (children.length === 0) {
+    return depth;
+  }
+
+  let maxDepth = depth;
+  for (const child of children) {
+    const childDepth = visitTreeDepth(child, depth + 1);
+    if (childDepth > maxDepth) {
+      maxDepth = childDepth;
+    }
+  }
+  return maxDepth;
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return "Unknown error";
 }
 
 function downloadTextFile(fileName: string, content: string, mimeType: string): void {

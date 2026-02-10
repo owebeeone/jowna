@@ -184,6 +184,7 @@ describe("indexeddb storage contracts", () => {
         borderColor: "#111111",
         wedgeStrokeWidth: 1,
         wedgeStrokeColor: "#333333",
+        collapseRedundant: true,
         fontFamily: "IBM Plex Sans",
         fontSizePx: 12,
         width: "fit",

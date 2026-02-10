@@ -23,6 +23,7 @@ const sampleSettings: ChartSettings = {
   borderColor: "#101010",
   wedgeStrokeWidth: 1.5,
   wedgeStrokeColor: "#ededed",
+  collapseRedundant: true,
   fontFamily: "IBM Plex Sans",
   fontSizePx: 12,
   width: "fit",
