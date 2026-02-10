@@ -1,6 +1,7 @@
 # Jowna - data visualizer
 
 Project link: <https://github.com/owebeeone/jowna>
+Live demo: <https://owebeeone.github.io/jowna>
 
 ## What this app currently does
 
