@@ -1,5 +1,6 @@
 import type { ChartLayoutNode, ChartLayoutResult } from "../../../features/chart";
 import { MIN_LABEL_FONT_SIZE, OUTER_RADIUS } from "./constants";
+import { isUnclassifiedNodeName } from "./classification";
 import { createRadiusScale } from "./geometry";
 import { pathKey } from "./path";
 
@@ -46,7 +47,7 @@ export function createWedgeRenderPlan(
   }
 
   const minVisibleWidth = Math.max(MIN_LABEL_FONT_SIZE, labelFontSize) * 2.3;
-  const radiusScale = createRadiusScale(maxDepth + 1, OUTER_RADIUS);
+  const radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
   const childrenByParent = new Map<string, ChartLayoutNode[]>();
   const visiblePathKeys = new Set(visibleNodes.map((node) => pathKey(node.path)));
 
@@ -104,7 +105,12 @@ export function createWedgeRenderPlan(
       const last = run[run.length - 1]!;
       const parentPath = first.path.slice(0, -1);
       const interactionPath = parentPath.length > 0 ? parentPath : first.path;
-      const groupedColorPath = resolveGroupedColorPath(parentPath, first.path, visiblePathKeys);
+      const primaryColorNode = run.find((node) => !isUnclassifiedNodeName(node.name)) ?? first;
+      const groupedColorPath = resolveGroupedColorPath(
+        parentPath,
+        primaryColorNode.path,
+        visiblePathKeys,
+      );
       const hiddenCount = run.length;
       const groupedMagnitude = run.reduce((sum, node) => sum + node.magnitude, 0);
 
@@ -146,13 +152,21 @@ export function createWedgeRenderPlan(
 
   const parentKeys = new Set(sortedNodes.map((entry) => pathKey(entry.node.path.slice(0, -1))));
   return {
-    visibleNodes: sortedNodes.map((entry) => ({
-      ...entry,
-      // Krona draws wedges to the outer edge and overlays descendants on top.
-      renderOuterDepth: maxDepth,
-      // Labels keep ring-relative behavior from the previous plan.
-      labelOuterDepth: parentKeys.has(pathKey(entry.node.path)) ? entry.node.depth : maxDepth,
-    })),
+    visibleNodes: sortedNodes.map((entry) => {
+      const hasVisibleChildren = parentKeys.has(pathKey(entry.node.path));
+      const ringOuterDepth = Math.min(maxDepth, entry.node.depth);
+
+      return {
+        ...entry,
+        // Krona keeps parent wedges to the next ring boundary when children are visible.
+        renderOuterDepth: entry.isGroupedHidden
+          ? maxDepth
+          : hasVisibleChildren
+            ? ringOuterDepth
+            : maxDepth,
+        labelOuterDepth: hasVisibleChildren ? ringOuterDepth : maxDepth,
+      };
+    }),
   };
 }
 
@@ -161,8 +175,8 @@ function shouldGroupHiddenChild(
   radiusScale: (depth: number) => number,
   minVisibleWidth: number,
 ): boolean {
-  const innerRadius = radiusScale(child.depth);
-  const outerRadius = radiusScale(child.depth + 1);
+  const innerRadius = radiusScale(Math.max(0, child.depth - 1));
+  const outerRadius = radiusScale(child.depth);
   const angleSpan = Math.max(0, child.endAngle - child.startAngle);
   const widthEstimate = angleSpan * (innerRadius + outerRadius);
   return widthEstimate < minVisibleWidth;

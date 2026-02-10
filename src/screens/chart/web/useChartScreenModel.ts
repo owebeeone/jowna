@@ -172,8 +172,8 @@ export function useChartScreenModel() {
 
   const layoutDataMaxDepth = computeLayoutDataMaxDepth(chartLayout ?? null);
   const maxDepth = resolveRenderDepth(layoutDataMaxDepth, depthLimit);
-  const radiusScale = createRadiusScale(maxDepth + 1, OUTER_RADIUS);
-  const centerDiscRadius = maxDepth > 0 ? Math.max(16, radiusScale(1) * 0.55) : 42;
+  const radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
+  const centerDiscRadius = maxDepth > 0 ? Math.max(8, Math.min(42, radiusScale(1) * 0.78)) : 42;
   const wedgeRenderPlan = useMemo(
     () => createWedgeRenderPlan(chartLayout ?? null, maxDepth, labelFontSize),
     [chartLayout, labelFontSize, maxDepth],

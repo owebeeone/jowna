@@ -3,7 +3,7 @@ import type { ChartLayoutResult } from "../../../features/chart";
 import { createWedgeRenderPlan } from "./wedge-plan";
 
 describe("createWedgeRenderPlan", () => {
-  it("renders wedges to the configured outer depth while preserving label depth", () => {
+  it("keeps parent wedges to the next ring while leaves extend to the outer edge", () => {
     const layout: ChartLayoutResult = {
       totalMagnitude: 100,
       nodes: [
@@ -46,7 +46,7 @@ describe("createWedgeRenderPlan", () => {
     const byPath = new Map(plan.visibleNodes.map((entry) => [entry.node.path.join("/"), entry]));
 
     expect(byPath.get("Root/A")?.renderOuterDepth).toBe(4);
-    expect(byPath.get("Root/B")?.renderOuterDepth).toBe(4);
+    expect(byPath.get("Root/B")?.renderOuterDepth).toBe(1);
     expect(byPath.get("Root/B/B1")?.renderOuterDepth).toBe(4);
 
     expect(byPath.get("Root/A")?.labelOuterDepth).toBe(4);

@@ -59,8 +59,8 @@ export function ChartCanvasPanel() {
               {model.wedgeRenderPlan.visibleNodes.map((entry) => {
                 const node = entry.node;
                 const interactionPath = entry.interactionPath;
-                const innerRadius = model.radiusScale(node.depth);
-                const outerRadius = model.radiusScale(entry.renderOuterDepth + 1);
+                const innerRadius = model.radiusScale(Math.max(0, node.depth - 1));
+                const outerRadius = model.radiusScale(entry.renderOuterDepth);
                 const pathData = arcPath(innerRadius, outerRadius, node.startAngle, node.endAngle);
                 if (!pathData) {
                   return null;
@@ -147,8 +147,8 @@ export function ChartCanvasPanel() {
               {model.wedgeRenderPlan.visibleNodes.map((entry) => {
                 const node = entry.node;
                 const interactionPath = entry.interactionPath;
-                const innerRadius = model.radiusScale(node.depth);
-                const outerRadius = model.radiusScale(entry.labelOuterDepth + 1);
+                const innerRadius = model.radiusScale(Math.max(0, node.depth - 1));
+                const outerRadius = model.radiusScale(entry.labelOuterDepth);
                 const label = createWedgeLabel(
                   node,
                   innerRadius,
