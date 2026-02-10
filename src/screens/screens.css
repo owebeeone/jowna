@@ -383,6 +383,18 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.chart-collapse-wrap {
+  border: 1px solid #c5d1ca;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #ffffff;
+}
+
+.chart-collapse-wrap input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 .chart-breadcrumbs {
   display: flex;
   gap: 8px;

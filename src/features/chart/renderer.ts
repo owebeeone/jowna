@@ -43,6 +43,13 @@ interface FlattenArgs {
   rootHasMultipleChildren: boolean;
 }
 
+interface FlattenChildEntry {
+  child: TreeNode | null;
+  pathSegments: string[];
+  magnitude: number;
+  isUnclassified: boolean;
+}
+
 function flattenForLayout(args: FlattenArgs): ChartLayoutNode[] {
   const currentPath = [...args.pathPrefix, args.node.name];
   const nodeMagnitude = computeEffectiveMagnitude(args.node);
@@ -66,7 +73,7 @@ function flattenForLayout(args: FlattenArgs): ChartLayoutNode[] {
     return nodes;
   }
 
-  const sortedChildren = args.node.children
+  const resolvedChildren = args.node.children
     .map((child) => {
       const resolved = resolveCollapsedChild({
         node: child,
@@ -79,31 +86,50 @@ function flattenForLayout(args: FlattenArgs): ChartLayoutNode[] {
         magnitude: computeEffectiveMagnitude(resolved.node),
       };
     })
-    .filter((entry) => entry.magnitude > 0)
-    .sort((left, right) => {
-      if (right.magnitude !== left.magnitude) {
-        return right.magnitude - left.magnitude;
-      }
-      return left.child.name.localeCompare(right.child.name);
+    .filter((entry) => entry.magnitude > 0);
+  const childEntries: FlattenChildEntry[] = resolvedChildren.map((entry) => ({
+    child: entry.child,
+    pathSegments: entry.pathSegments,
+    magnitude: entry.magnitude,
+    isUnclassified: false,
+  }));
+  const childrenTotalMagnitude = childEntries.reduce((sum, entry) => sum + entry.magnitude, 0);
+  const unclassifiedMagnitude = Math.max(0, nodeMagnitude - childrenTotalMagnitude);
+  if (unclassifiedMagnitude > 1e-9) {
+    childEntries.push({
+      child: null,
+      pathSegments: [getUnclassifiedName(args.node.name)],
+      magnitude: unclassifiedMagnitude,
+      isUnclassified: true,
     });
-  const childrenTotalMagnitude = sortedChildren.reduce((sum, entry) => sum + entry.magnitude, 0);
+  }
 
   let childStartAngle = args.startAngle;
-  for (const entry of sortedChildren) {
-    const childAngleSpan =
-      childrenTotalMagnitude === 0 ? 0 : (entry.magnitude / childrenTotalMagnitude) * angleSpan;
-    nodes.push(
-      ...flattenForLayout({
-        node: entry.child,
-        pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
+  for (const entry of childEntries) {
+    const childAngleSpan = nodeMagnitude === 0 ? 0 : (entry.magnitude / nodeMagnitude) * angleSpan;
+    if (entry.isUnclassified || !entry.child) {
+      nodes.push({
+        path: currentPath.concat(entry.pathSegments),
+        name: entry.pathSegments[entry.pathSegments.length - 1] ?? "Unclassified",
         depth: args.depth + 1,
+        magnitude: entry.magnitude,
         startAngle: childStartAngle,
-        angleSpan: childAngleSpan,
-        depthLimit: args.depthLimit,
-        collapseRedundant: args.collapseRedundant,
-        rootHasMultipleChildren: args.rootHasMultipleChildren,
-      }),
-    );
+        endAngle: childStartAngle + childAngleSpan,
+      });
+    } else {
+      nodes.push(
+        ...flattenForLayout({
+          node: entry.child,
+          pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
+          depth: args.depth + 1,
+          startAngle: childStartAngle,
+          angleSpan: childAngleSpan,
+          depthLimit: args.depthLimit,
+          collapseRedundant: args.collapseRedundant,
+          rootHasMultipleChildren: args.rootHasMultipleChildren,
+        }),
+      );
+    }
     childStartAngle += childAngleSpan;
   }
 
@@ -127,6 +153,10 @@ function normalizeMagnitude(value: number): number {
     return 0;
   }
   return value;
+}
+
+function getUnclassifiedName(parentName: string): string {
+  return `[other ${parentName}]`;
 }
 
 interface CollapseResolution {

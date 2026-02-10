@@ -53,6 +53,7 @@ export interface Project {
   updatedAt: IsoDateTime;
   datasetIds: DatasetId[];
   activeDatasetId: DatasetId | null;
+  chartSettings?: ChartSettings;
 }
 
 export interface ChartSettings {

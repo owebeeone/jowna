@@ -37,6 +37,7 @@ export interface JownaActions {
   parsePreview: () => Promise<void>;
   applyImport: (datasetName: string) => Promise<void>;
   openChart: (datasetId?: string | null) => void;
+  setProjectChartSettings: (settings: ChartSettings) => Promise<void>;
   backToSelection: () => void;
   focusPath: (path: string[]) => void;
   hoverPath: (path: string[] | null) => void;

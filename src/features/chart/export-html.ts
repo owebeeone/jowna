@@ -551,13 +551,33 @@ const STANDALONE_SCRIPT = `
     var totalMagnitude = layout.totalMagnitude;
     var activeMagnitude = activeLayoutNode ? activeLayoutNode.magnitude : activeNode ? activeNode.magnitude : 0;
     var activeShare = totalMagnitude > 0 ? (activeMagnitude / totalMagnitude) * 100 : 0;
-    var maxDepth = maxNodeDepth(layout.nodes);
-    var radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
+    var layoutDataMaxDepth = computeLayoutDataMaxDepth(layout);
+    var renderDepth = resolveRenderDepth(layoutDataMaxDepth, state.depthLimit);
+    var maxDepth = renderDepth;
+    var radiusScale = createRadiusScale(renderDepth, OUTER_RADIUS);
+    var wedgeRenderPlan = createWedgeRenderPlan(
+      layout,
+      renderDepth,
+      Math.max(8, chartSettings.fontSizePx),
+      radiusScale
+    );
     var parentFocusPath = resolvedFocusPath.length > 1 ? resolvedFocusPath.slice(0, -1) : null;
 
     renderToolbar(parentFocusPath);
     renderBreadcrumbs(resolvedFocusPath);
-    renderSvg(layout, kronaColors, activePath, resolvedFocusPath, activeNode, activeMagnitude, activeShare, radiusScale, maxDepth, parentFocusPath);
+    renderSvg(
+      layout,
+      kronaColors,
+      activePath,
+      resolvedFocusPath,
+      activeNode,
+      activeMagnitude,
+      activeShare,
+      radiusScale,
+      maxDepth,
+      parentFocusPath,
+      wedgeRenderPlan
+    );
     renderDetails(activeNode, activePath, activeMagnitude, activeShare);
     renderTopSegments(layout, totalMagnitude, activePath, kronaColors);
   }
@@ -614,27 +634,31 @@ const STANDALONE_SCRIPT = `
     activeShare,
     radiusScale,
     maxDepth,
-    parentFocusPath
+    parentFocusPath,
+    wedgeRenderPlan
   ) {
     clearElement(elements.chartRoot);
+    ensureHiddenPattern();
 
-    var nodes = layout.nodes;
-    for (var index = 0; index < nodes.length; index += 1) {
-      var node = nodes[index];
+    var renderNodes = wedgeRenderPlan.visibleNodes;
+    for (var index = 0; index < renderNodes.length; index += 1) {
+      var renderNode = renderNodes[index];
+      var node = renderNode.node;
       if (node.depth <= 0) {
         continue;
       }
 
       var innerRadius = radiusScale(node.depth - 1);
-      var outerRadius = radiusScale(node.depth);
+      var outerRadius = radiusScale(renderNode.outerDepth);
       var pathData = arcPath(innerRadius, outerRadius, node.startAngle, node.endAngle);
       if (!pathData) {
         continue;
       }
 
-      var isActive = activePath ? pathEquals(node.path, activePath) : false;
-      var isFocused = resolvedFocusPath ? pathEquals(node.path, resolvedFocusPath) : false;
-      var fill = kronaColors.get(pathKey(node.path)) || KRONA_UNCLASSIFIED_COLOR;
+      var isInteractive = !renderNode.isGroupedHidden && !isUnclassifiedNodeName(node.name);
+      var isActive = isInteractive && activePath ? pathEquals(node.path, activePath) : false;
+      var isFocused = isInteractive && resolvedFocusPath ? pathEquals(node.path, resolvedFocusPath) : false;
+      var fill = kronaColors.get(pathKey(renderNode.colorPath || node.path)) || KRONA_UNCLASSIFIED_COLOR;
 
       var pathElement = createSvgElement("path");
       pathElement.setAttribute("class", "chart-wedge" + (isActive ? " is-active" : "") + (isFocused ? " is-focus" : ""));
@@ -645,27 +669,53 @@ const STANDALONE_SCRIPT = `
         "stroke-width",
         isActive ? "2.2" : String(Math.max(0.4, chartSettings.wedgeStrokeWidth))
       );
-      pathElement.setAttribute("opacity", state.hoverPath ? (isActive ? "1" : "0.42") : (isFocused ? "1" : "0.92"));
+      pathElement.setAttribute(
+        "opacity",
+        isInteractive && state.hoverPath ? (isActive ? "1" : "0.42") : (isFocused ? "1" : "0.92")
+      );
 
-      pathElement.addEventListener("mouseenter", createHoverHandler(node.path));
-      pathElement.addEventListener("mouseleave", clearHoverHandler);
-      pathElement.addEventListener("click", createFocusHandler(node.path));
-      pathElement.addEventListener("pointerdown", createFocusHandler(node.path));
+      if (isInteractive) {
+        pathElement.setAttribute("role", "button");
+        pathElement.setAttribute("tabindex", "0");
+        pathElement.addEventListener("mouseenter", createHoverHandler(node.path));
+        pathElement.addEventListener("mouseleave", clearHoverHandler);
+        pathElement.addEventListener("click", createFocusHandler(node.path));
+        pathElement.addEventListener("pointerdown", createFocusHandler(node.path));
+      }
 
       var title = createSvgElement("title");
-      title.textContent = node.path.join(" / ") + ": " + formatNumber(node.magnitude);
+      title.textContent = renderNode.isGroupedHidden
+        ? String(renderNode.hiddenCount) + " more"
+        : node.path.join(" / ") + ": " + formatNumber(node.magnitude);
       pathElement.appendChild(title);
       elements.chartRoot.appendChild(pathElement);
+
+      if (renderNode.isGroupedHidden) {
+        var patternPath = createSvgElement("path");
+        patternPath.setAttribute("d", pathData);
+        patternPath.setAttribute("fill", "url(#chart-hidden-pattern)");
+        patternPath.setAttribute("stroke", "none");
+        patternPath.setAttribute("opacity", "0.65");
+        patternPath.setAttribute("pointer-events", "none");
+        elements.chartRoot.appendChild(patternPath);
+      }
     }
 
-    for (var labelIndex = 0; labelIndex < nodes.length; labelIndex += 1) {
-      var labelNode = nodes[labelIndex];
+    for (var labelIndex = 0; labelIndex < renderNodes.length; labelIndex += 1) {
+      var labelRenderNode = renderNodes[labelIndex];
+      var labelNode = labelRenderNode.node;
       if (labelNode.depth <= 0) {
         continue;
       }
       var labelInnerRadius = radiusScale(labelNode.depth - 1);
-      var labelOuterRadius = radiusScale(labelNode.depth);
-      var label = createWedgeLabel(labelNode, labelInnerRadius, labelOuterRadius, layout.totalMagnitude, maxDepth);
+      var labelOuterRadius = radiusScale(labelRenderNode.outerDepth);
+      var label = createWedgeLabel(
+        labelNode,
+        labelInnerRadius,
+        labelOuterRadius,
+        maxDepth,
+        labelRenderNode.outerDepth
+      );
       if (!label) {
         continue;
       }
@@ -721,6 +771,190 @@ const STANDALONE_SCRIPT = `
     centerSub.setAttribute("class", "chart-center-sub");
     centerSub.textContent = activeShare.toFixed(1) + "% of view";
     elements.chartRoot.appendChild(centerSub);
+  }
+
+  function ensureHiddenPattern() {
+    if (!elements.chartSvg) {
+      return;
+    }
+
+    var existing = elements.chartSvg.querySelector("#chart-hidden-pattern");
+    if (existing) {
+      return;
+    }
+
+    var defs = elements.chartSvg.querySelector("defs");
+    if (!defs) {
+      defs = createSvgElement("defs");
+      elements.chartSvg.insertBefore(defs, elements.chartSvg.firstChild);
+    }
+
+    var pattern = createSvgElement("pattern");
+    pattern.setAttribute("id", "chart-hidden-pattern");
+    pattern.setAttribute("patternUnits", "userSpaceOnUse");
+    pattern.setAttribute("x", "0");
+    pattern.setAttribute("y", "0");
+    pattern.setAttribute("width", "7");
+    pattern.setAttribute("height", "7");
+
+    var lineA = createSvgElement("line");
+    lineA.setAttribute("x1", "0");
+    lineA.setAttribute("y1", "0");
+    lineA.setAttribute("x2", "3.5");
+    lineA.setAttribute("y2", "3.5");
+    lineA.setAttribute("stroke", "rgba(16,36,27,0.35)");
+    lineA.setAttribute("stroke-width", "0.8");
+    pattern.appendChild(lineA);
+
+    var lineB = createSvgElement("line");
+    lineB.setAttribute("x1", "3.5");
+    lineB.setAttribute("y1", "7");
+    lineB.setAttribute("x2", "7");
+    lineB.setAttribute("y2", "3.5");
+    lineB.setAttribute("stroke", "rgba(16,36,27,0.35)");
+    lineB.setAttribute("stroke-width", "0.8");
+    pattern.appendChild(lineB);
+
+    defs.appendChild(pattern);
+  }
+
+  function createWedgeRenderPlan(layout, maxDepth, labelFontSize, radiusScale) {
+    if (!layout || !layout.nodes || layout.nodes.length === 0) {
+      return { visibleNodes: [] };
+    }
+
+    var visibleNodes = layout.nodes.filter(function (node) {
+      return node.depth > 0;
+    });
+    if (visibleNodes.length === 0 || maxDepth <= 0) {
+      return {
+        visibleNodes: visibleNodes.map(function (node) {
+          return {
+            node: node,
+            isGroupedHidden: false,
+            hiddenCount: 0,
+            key: pathKey(node.path),
+            colorPath: node.path,
+            outerDepth: node.depth,
+          };
+        }),
+      };
+    }
+
+    var minVisibleWidth = Math.max(8, labelFontSize) * 2.3;
+    var childrenByParent = new Map();
+    for (var index = 0; index < visibleNodes.length; index += 1) {
+      var current = visibleNodes[index];
+      var parent = pathKey(current.path.slice(0, -1));
+      var children = childrenByParent.get(parent);
+      if (children) {
+        children.push(current);
+      } else {
+        childrenByParent.set(parent, [current]);
+      }
+    }
+
+    childrenByParent.forEach(function (children) {
+      children.sort(function (left, right) {
+        if (left.startAngle !== right.startAngle) {
+          return left.startAngle - right.startAngle;
+        }
+        return left.endAngle - right.endAngle;
+      });
+    });
+
+    var groupedNodes = [];
+    childrenByParent.forEach(function (children, parentKey) {
+      var cursor = 0;
+      var hiddenGroupIndex = 0;
+      while (cursor < children.length) {
+        var child = children[cursor];
+        if (!shouldGroupHiddenChild(child, radiusScale, minVisibleWidth)) {
+          groupedNodes.push({
+            node: child,
+            isGroupedHidden: false,
+            hiddenCount: 0,
+            key: pathKey(child.path),
+            colorPath: child.path,
+            outerDepth: child.depth,
+          });
+          cursor += 1;
+          continue;
+        }
+
+        var runEnd = cursor;
+        while (
+          runEnd + 1 < children.length &&
+          shouldGroupHiddenChild(children[runEnd + 1], radiusScale, minVisibleWidth)
+        ) {
+          runEnd += 1;
+        }
+
+        var run = children.slice(cursor, runEnd + 1);
+        var first = run[0];
+        var last = run[run.length - 1];
+        var hiddenCount = run.length;
+        var groupedMagnitude = run.reduce(function (sum, item) {
+          return sum + item.magnitude;
+        }, 0);
+
+        groupedNodes.push({
+          node: {
+            path: first.path.slice(0, -1).concat([String(hiddenCount) + " more"]),
+            name: String(hiddenCount) + " more",
+            depth: first.depth,
+            magnitude: groupedMagnitude,
+            startAngle: first.startAngle,
+            endAngle: last.endAngle,
+          },
+          isGroupedHidden: true,
+          hiddenCount: hiddenCount,
+          key: parentKey + "/[" + hiddenCount + "-more-" + hiddenGroupIndex + "]",
+          colorPath: first.path,
+          outerDepth: first.depth,
+        });
+
+        hiddenGroupIndex += 1;
+        cursor = runEnd + 1;
+      }
+    });
+
+    groupedNodes.sort(function (left, right) {
+      if (left.node.depth !== right.node.depth) {
+        return left.node.depth - right.node.depth;
+      }
+      if (left.node.startAngle !== right.node.startAngle) {
+        return left.node.startAngle - right.node.startAngle;
+      }
+      if (left.node.endAngle !== right.node.endAngle) {
+        return left.node.endAngle - right.node.endAngle;
+      }
+      return left.key.localeCompare(right.key);
+    });
+
+    var parentKeys = new Set(groupedNodes.map(function (entry) {
+      return pathKey(entry.node.path.slice(0, -1));
+    }));
+    return {
+      visibleNodes: groupedNodes.map(function (entry) {
+        return {
+          node: entry.node,
+          isGroupedHidden: entry.isGroupedHidden,
+          hiddenCount: entry.hiddenCount,
+          key: entry.key,
+          colorPath: entry.colorPath,
+          outerDepth: parentKeys.has(pathKey(entry.node.path)) ? entry.node.depth : maxDepth,
+        };
+      }),
+    };
+  }
+
+  function shouldGroupHiddenChild(child, radiusScale, minVisibleWidth) {
+    var innerRadius = radiusScale(child.depth - 1);
+    var outerRadius = radiusScale(child.depth);
+    var angleSpan = Math.max(0, child.endAngle - child.startAngle);
+    var widthEstimate = angleSpan * (innerRadius + outerRadius);
+    return widthEstimate < minVisibleWidth;
   }
 
   function renderDetails(activeNode, activePath, activeMagnitude, activeShare) {
@@ -786,7 +1020,7 @@ const STANDALONE_SCRIPT = `
 
     var topLevel = layout.nodes
       .filter(function (node) {
-        return node.depth === 1;
+        return node.depth === 1 && !isUnclassifiedNodeName(node.name);
       })
       .sort(function (left, right) {
         if (right.magnitude !== left.magnitude) {
@@ -871,6 +1105,9 @@ const STANDALONE_SCRIPT = `
     if (normalized.length === 0) {
       return;
     }
+    if (!findNodeByPath(dataset.tree, normalized)) {
+      return;
+    }
     var focusUnchanged = state.focusPath && pathEquals(state.focusPath, normalized);
 
     state.focusPath = normalized;
@@ -953,7 +1190,7 @@ const STANDALONE_SCRIPT = `
       return nodes;
     }
 
-    var sortedChildren = args.node.children
+    var resolvedChildren = args.node.children
       .map(function (child) {
         var collapsed = resolveCollapsedChild(
           child,
@@ -968,33 +1205,56 @@ const STANDALONE_SCRIPT = `
       })
       .filter(function (entry) {
         return entry.magnitude > 0;
-      })
-      .sort(function (left, right) {
-        if (right.magnitude !== left.magnitude) {
-          return right.magnitude - left.magnitude;
-        }
-        return left.child.name.localeCompare(right.child.name);
       });
 
-    var childrenTotalMagnitude = sortedChildren.reduce(function (sum, entry) {
+    var childEntries = resolvedChildren.map(function (entry) {
+      return {
+        child: entry.child,
+        pathSegments: entry.pathSegments,
+        magnitude: entry.magnitude,
+        isUnclassified: false,
+      };
+    });
+
+    var childrenTotalMagnitude = childEntries.reduce(function (sum, entry) {
       return sum + entry.magnitude;
     }, 0);
+    var unclassifiedMagnitude = Math.max(0, nodeMagnitude - childrenTotalMagnitude);
+    if (unclassifiedMagnitude > 0.000000001) {
+      childEntries.push({
+        child: null,
+        pathSegments: [getUnclassifiedName(args.node.name)],
+        magnitude: unclassifiedMagnitude,
+        isUnclassified: true,
+      });
+    }
 
     var childStartAngle = args.startAngle;
-    for (var index = 0; index < sortedChildren.length; index += 1) {
-      var entry = sortedChildren[index];
-      var childAngleSpan = childrenTotalMagnitude === 0 ? 0 : (entry.magnitude / childrenTotalMagnitude) * angleSpan;
-      var childNodes = flattenForLayout({
-        node: entry.child,
-        pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
-        depth: args.depth + 1,
-        startAngle: childStartAngle,
-        angleSpan: childAngleSpan,
-        depthLimit: args.depthLimit,
-        collapseRedundant: args.collapseRedundant,
-        rootHasMultipleChildren: args.rootHasMultipleChildren,
-      });
-      nodes = nodes.concat(childNodes);
+    for (var index = 0; index < childEntries.length; index += 1) {
+      var entry = childEntries[index];
+      var childAngleSpan = nodeMagnitude === 0 ? 0 : (entry.magnitude / nodeMagnitude) * angleSpan;
+      if (entry.isUnclassified || !entry.child) {
+        nodes.push({
+          path: currentPath.concat(entry.pathSegments),
+          name: entry.pathSegments[entry.pathSegments.length - 1] || "Unclassified",
+          depth: args.depth + 1,
+          magnitude: entry.magnitude,
+          startAngle: childStartAngle,
+          endAngle: childStartAngle + childAngleSpan,
+        });
+      } else {
+        var childNodes = flattenForLayout({
+          node: entry.child,
+          pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
+          depth: args.depth + 1,
+          startAngle: childStartAngle,
+          angleSpan: childAngleSpan,
+          depthLimit: args.depthLimit,
+          collapseRedundant: args.collapseRedundant,
+          rootHasMultipleChildren: args.rootHasMultipleChildren,
+        });
+        nodes = nodes.concat(childNodes);
+      }
       childStartAngle += childAngleSpan;
     }
 
@@ -1018,6 +1278,10 @@ const STANDALONE_SCRIPT = `
       return 0;
     }
     return numberValue;
+  }
+
+  function getUnclassifiedName(parentName) {
+    return "[other " + String(parentName) + "]";
   }
 
   function resolveCollapsedChild(node, collapseRedundant, rootHasMultipleChildren) {
@@ -1221,16 +1485,48 @@ const STANDALONE_SCRIPT = `
     };
   }
 
-  function createWedgeLabel(node, innerRadius, outerRadius, totalMagnitude, maxDepth) {
-    var isOuterRing = maxDepth <= 1 || node.depth === maxDepth;
+  function computeLayoutDataMaxDepth(layout) {
+    if (!layout || !layout.nodes || layout.nodes.length === 0) {
+      return 0;
+    }
+
+    var maxDepth = 0;
+    for (var index = 0; index < layout.nodes.length; index += 1) {
+      var node = layout.nodes[index];
+      if (node.depth <= 0 || isUnclassifiedNodeName(node.name)) {
+        continue;
+      }
+      if (node.depth > maxDepth) {
+        maxDepth = node.depth;
+      }
+    }
+
+    if (maxDepth > 0) {
+      return maxDepth;
+    }
+    return maxNodeDepth(layout.nodes);
+  }
+
+  function resolveRenderDepth(treeMaxDepth, depthLimit) {
+    if (treeMaxDepth <= 0) {
+      return 0;
+    }
+    if (depthLimit <= 0) {
+      return treeMaxDepth;
+    }
+    return Math.min(depthLimit, treeMaxDepth);
+  }
+
+  function createWedgeLabel(node, innerRadius, outerRadius, maxDepth, outerDepth) {
+    var isOuterRing = maxDepth <= 1 || outerDepth >= maxDepth;
     var angleSpan = node.endAngle - node.startAngle;
     var ringThickness = outerRadius - innerRadius;
     var radius = innerRadius + ringThickness * 0.56;
     var tangentialSpan = radius * angleSpan;
 
-    var minAngleSpan = isOuterRing ? 0.045 : 0.09;
-    var minRingThickness = isOuterRing ? 12 : 16;
-    var minTangentialSpan = isOuterRing ? 12 : 42;
+    var minAngleSpan = isOuterRing ? 0.018 : 0.055;
+    var minRingThickness = isOuterRing ? 10 : 14;
+    var minTangentialSpan = isOuterRing ? 6 : 18;
 
     if (
       angleSpan < minAngleSpan ||
@@ -1240,15 +1536,14 @@ const STANDALONE_SCRIPT = `
       return null;
     }
 
-    var percentage = totalMagnitude > 0 ? (node.magnitude / totalMagnitude) * 100 : 0;
     var midAngle = (node.startAngle + node.endAngle) / 2;
     var point = polarPoint(radius, midAngle);
 
     var availableTextLength = isOuterRing
       ? Math.max(0, ringThickness - 6)
       : Math.max(0, tangentialSpan - 4);
-    var maxChars = Math.max(isOuterRing ? 4 : 8, Math.floor(availableTextLength / 7.2));
-    var text = ellipsize(node.name + " " + percentage.toFixed(1) + "%", maxChars);
+    var maxChars = Math.max(isOuterRing ? 3 : 6, Math.floor(availableTextLength / 6.8));
+    var text = ellipsize(node.name, maxChars);
     var baseRotation = isOuterRing ? (midAngle * 180) / Math.PI - 90 : (midAngle * 180) / Math.PI;
     var normalizedRotation = normalizeDegrees(baseRotation);
     var flip = normalizedRotation > 90 || normalizedRotation < -90;
@@ -1282,6 +1577,10 @@ const STANDALONE_SCRIPT = `
     var childrenByParent = new Map();
     for (var index = 0; index < layout.nodes.length; index += 1) {
       var node = layout.nodes[index];
+      if (isUnclassifiedNodeName(node.name)) {
+        colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
+        continue;
+      }
       if (node.depth === 0) {
         continue;
       }
@@ -1303,7 +1602,7 @@ const STANDALONE_SCRIPT = `
       });
     });
 
-    var maxDepth = maxNodeDepth(layout.nodes);
+    var maxDepth = computeLayoutDataMaxDepth(layout);
     var depthNormalizer = maxDepth > 8 ? 8 : Math.max(maxDepth, 1);
     var lightnessFactor = (KRONA_LIGHTNESS_MAX - KRONA_LIGHTNESS_BASE) / depthNormalizer;
 
@@ -1314,7 +1613,7 @@ const STANDALONE_SCRIPT = `
       }
 
       if (node.depth > 0) {
-        if (node.magnitude <= 0) {
+        if (node.magnitude <= 0 || isUnclassifiedNodeName(node.name)) {
           colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
         } else {
           var lightness = Math.min(
@@ -1439,6 +1738,10 @@ const STANDALONE_SCRIPT = `
 
   function pathKey(path) {
     return path.join("/");
+  }
+
+  function isUnclassifiedNodeName(name) {
+    return String(name).trim().toLowerCase().indexOf("[other ") === 0;
   }
 
   function normalizeDegrees(angle) {

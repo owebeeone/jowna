@@ -118,20 +118,20 @@ export function ChartScreen() {
   const activeMagnitude = activeLayoutNode?.magnitude ?? activeNode?.magnitude ?? 0;
   const activeShare = totalMagnitude > 0 ? (activeMagnitude / totalMagnitude) * 100 : 0;
 
-  const topSegments = (
-    chartLayout?.nodes
-      .filter((node) => node.depth === 1)
-      .sort((left, right) => {
-        if (right.magnitude !== left.magnitude) {
-          return right.magnitude - left.magnitude;
-        }
-        return left.name.localeCompare(right.name);
-      }) ?? []
-  ).slice(0, MAX_KEY_SEGMENTS);
-  const hiddenSegments =
-    (chartLayout?.nodes.filter((node) => node.depth === 1).length ?? 0) - topSegments.length;
+  const topLevelSegments = (
+    chartLayout?.nodes.filter((node) => node.depth === 1 && !isUnclassifiedNodeName(node.name)) ??
+    []
+  ).sort((left, right) => {
+    if (right.magnitude !== left.magnitude) {
+      return right.magnitude - left.magnitude;
+    }
+    return left.name.localeCompare(right.name);
+  });
+  const topSegments = topLevelSegments.slice(0, MAX_KEY_SEGMENTS);
+  const hiddenSegments = topLevelSegments.length - topSegments.length;
 
-  const maxDepth = chartLayout?.nodes.reduce((max, node) => Math.max(max, node.depth), 0) ?? 0;
+  const layoutDataMaxDepth = computeLayoutDataMaxDepth(chartLayout ?? null);
+  const maxDepth = resolveRenderDepth(layoutDataMaxDepth, depthLimit);
   const radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
   const wedgeRenderPlan = useMemo(
     () => createWedgeRenderPlan(chartLayout ?? null, maxDepth, labelFontSize),
@@ -172,11 +172,28 @@ export function ChartScreen() {
     setOpenMembersPopoverForPath(null);
   };
 
+  const persistChartSettings = (nextSettings: ChartSettings) => {
+    const normalized: ChartSettings = {
+      ...nextSettings,
+      colorScheme: Array.isArray(nextSettings.colorScheme)
+        ? [...nextSettings.colorScheme]
+        : nextSettings.colorScheme,
+    };
+
+    if (actions?.setProjectChartSettings) {
+      void actions.setProjectChartSettings(normalized);
+      return;
+    }
+
+    chartSettingsTap?.set(normalized);
+  };
+
   const updateChartSettings = (partial: Partial<ChartSettings>) => {
-    chartSettingsTap?.update((current) => ({
-      ...(current ?? DEFAULT_CHART_SETTINGS),
+    const current = chartSettingsTap?.get() ?? resolvedChartSettings;
+    persistChartSettings({
+      ...current,
       ...partial,
-    }));
+    });
   };
 
   const updateDimensionMode = (dimension: "width" | "height", mode: "fit" | "custom") => {
@@ -257,6 +274,16 @@ export function ChartScreen() {
           </div>
 
           <div className="row" style={{ minWidth: 220 }}>
+            <label className="row chart-collapse-wrap">
+              <input
+                type="checkbox"
+                checked={resolvedChartSettings.collapseRedundant}
+                onChange={(event) =>
+                  updateChartSettings({ collapseRedundant: event.target.checked })
+                }
+              />
+              <span>Collapse</span>
+            </label>
             <span className="muted">Depth</span>
             <input type="number" {...depthBind} min={0} max={12} />
           </div>
@@ -325,9 +352,10 @@ export function ChartScreen() {
                     transform="translate(310 310)"
                     style={{ fontFamily: resolvedChartSettings.fontFamily }}
                   >
-                    {wedgeRenderPlan.visibleNodes.map((node) => {
+                    {wedgeRenderPlan.visibleNodes.map((entry) => {
+                      const node = entry.node;
                       const innerRadius = radiusScale(node.depth - 1);
-                      const outerRadius = radiusScale(node.depth);
+                      const outerRadius = radiusScale(entry.outerDepth);
                       const pathData = arcPath(
                         innerRadius,
                         outerRadius,
@@ -338,15 +366,20 @@ export function ChartScreen() {
                         return null;
                       }
 
-                      const isActive = activePath ? pathEquals(node.path, activePath) : false;
-                      const isFocused = resolvedFocusPath
-                        ? pathEquals(node.path, resolvedFocusPath)
-                        : false;
-                      const fill = kronaColors.get(pathKey(node.path)) ?? KRONA_UNCLASSIFIED_COLOR;
-                      const hasHiddenChildren = wedgeRenderPlan.hiddenChildParents.has(
-                        pathKey(node.path),
-                      );
-                      const wedgeKey = node.path.join("/");
+                      const isInteractive =
+                        !entry.isGroupedHidden && !isUnclassifiedNodeName(node.name);
+                      const isActive =
+                        isInteractive && activePath ? pathEquals(node.path, activePath) : false;
+                      const isFocused =
+                        isInteractive && resolvedFocusPath
+                          ? pathEquals(node.path, resolvedFocusPath)
+                          : false;
+                      const fill =
+                        kronaColors.get(pathKey(entry.colorPath)) ?? KRONA_UNCLASSIFIED_COLOR;
+                      const wedgeKey = entry.key;
+                      const titleText = entry.isGroupedHidden
+                        ? `${entry.hiddenCount} more`
+                        : `${node.path.join(" / ")}: ${node.magnitude.toLocaleString()}`;
 
                       return (
                         <g key={wedgeKey}>
@@ -358,22 +391,40 @@ export function ChartScreen() {
                             strokeWidth={
                               isActive ? 2.2 : Math.max(0.4, resolvedChartSettings.wedgeStrokeWidth)
                             }
-                            opacity={hoverPath ? (isActive ? 1 : 0.42) : isFocused ? 1 : 0.92}
-                            role="button"
-                            tabIndex={0}
-                            onMouseEnter={() => actions?.hoverPath(node.path)}
-                            onMouseLeave={() => actions?.hoverPath(null)}
-                            onClick={() => actions?.focusPath(node.path)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                actions?.focusPath(node.path);
-                              }
-                            }}
+                            opacity={
+                              isInteractive && hoverPath
+                                ? isActive
+                                  ? 1
+                                  : 0.42
+                                : isFocused
+                                  ? 1
+                                  : 0.92
+                            }
+                            role={isInteractive ? "button" : undefined}
+                            tabIndex={isInteractive ? 0 : undefined}
+                            onMouseEnter={
+                              isInteractive ? () => actions?.hoverPath(node.path) : undefined
+                            }
+                            onMouseLeave={
+                              isInteractive ? () => actions?.hoverPath(null) : undefined
+                            }
+                            onClick={
+                              isInteractive ? () => actions?.focusPath(node.path) : undefined
+                            }
+                            onKeyDown={
+                              isInteractive
+                                ? (event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      actions?.focusPath(node.path);
+                                    }
+                                  }
+                                : undefined
+                            }
                           >
-                            <title>{`${node.path.join(" / ")}: ${node.magnitude.toLocaleString()}`}</title>
+                            <title>{titleText}</title>
                           </path>
-                          {hasHiddenChildren && (
+                          {entry.isGroupedHidden && (
                             <path
                               d={pathData}
                               fill="url(#chart-hidden-pattern)"
@@ -386,22 +437,23 @@ export function ChartScreen() {
                       );
                     })}
 
-                    {wedgeRenderPlan.visibleNodes.map((node) => {
+                    {wedgeRenderPlan.visibleNodes.map((entry) => {
+                      const node = entry.node;
                       const innerRadius = radiusScale(node.depth - 1);
-                      const outerRadius = radiusScale(node.depth);
+                      const outerRadius = radiusScale(entry.outerDepth);
                       const label = createWedgeLabel(
                         node,
                         innerRadius,
                         outerRadius,
-                        chartLayout.totalMagnitude,
                         maxDepth,
+                        entry.outerDepth,
                       );
                       if (!label) {
                         return null;
                       }
                       return (
                         <text
-                          key={`label-${node.path.join("/")}`}
+                          key={`label-${entry.key}`}
                           className="chart-wedge-label"
                           x={label.x}
                           y={label.y}
@@ -784,11 +836,7 @@ export function ChartScreen() {
             <footer className="row chart-settings-popover-footer">
               <button
                 className="ghost"
-                onClick={() =>
-                  chartSettingsTap?.set({
-                    ...DEFAULT_CHART_SETTINGS,
-                  })
-                }
+                onClick={() => persistChartSettings({ ...DEFAULT_CHART_SETTINGS })}
               >
                 Reset Defaults
               </button>
@@ -940,12 +988,30 @@ function createRadiusScale(maxDepth: number, outerRadius: number): (depth: numbe
   };
 }
 
-interface WedgeRenderPlan {
-  visibleNodes: ChartLayoutNode[];
-  hiddenChildParents: Set<string>;
+export function resolveRenderDepth(treeMaxDepth: number, depthLimit: number): number {
+  if (treeMaxDepth <= 0) {
+    return 0;
+  }
+  if (depthLimit <= 0) {
+    return treeMaxDepth;
+  }
+  return Math.min(depthLimit, treeMaxDepth);
 }
 
-function createWedgeRenderPlan(
+interface WedgeRenderPlan {
+  visibleNodes: WedgeRenderNode[];
+}
+
+interface WedgeRenderNode {
+  node: ChartLayoutNode;
+  isGroupedHidden: boolean;
+  hiddenCount: number;
+  key: string;
+  colorPath: string[];
+  outerDepth: number;
+}
+
+export function createWedgeRenderPlan(
   layout: ChartLayoutResult | null,
   maxDepth: number,
   labelFontSize: number,
@@ -953,20 +1019,23 @@ function createWedgeRenderPlan(
   if (!layout || layout.nodes.length === 0) {
     return {
       visibleNodes: [],
-      hiddenChildParents: new Set<string>(),
     };
   }
 
   const visibleNodes = layout.nodes.filter((node) => node.depth > 0);
-  const hiddenChildParents = new Set<string>();
   if (visibleNodes.length === 0 || maxDepth <= 0) {
     return {
-      visibleNodes,
-      hiddenChildParents,
+      visibleNodes: visibleNodes.map((node) => ({
+        node,
+        isGroupedHidden: false,
+        hiddenCount: 0,
+        key: pathKey(node.path),
+        colorPath: node.path,
+        outerDepth: node.depth,
+      })),
     };
   }
 
-  // Mirror Krona's small-slice threshold so parent wedges can show a hidden-descendant pattern.
   const minVisibleWidth = Math.max(8, labelFontSize) * 2.3;
   const radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
   const childrenByParent = new Map<string, ChartLayoutNode[]>();
@@ -981,28 +1050,102 @@ function createWedgeRenderPlan(
     }
   }
 
-  for (const [parentKey, children] of childrenByParent.entries()) {
-    if (children.length === 0) {
-      continue;
-    }
-
-    for (const child of children) {
-      const innerRadius = radiusScale(child.depth - 1);
-      const outerRadius = radiusScale(child.depth);
-      const angleSpan = Math.max(0, child.endAngle - child.startAngle);
-      const widthEstimate = angleSpan * (innerRadius + outerRadius);
-
-      if (widthEstimate < minVisibleWidth) {
-        hiddenChildParents.add(parentKey);
-        break;
+  childrenByParent.forEach((children) => {
+    children.sort((left, right) => {
+      if (left.startAngle !== right.startAngle) {
+        return left.startAngle - right.startAngle;
       }
+      return left.endAngle - right.endAngle;
+    });
+  });
+
+  const groupedNodes: WedgeRenderNode[] = [];
+  for (const [parentKey, children] of childrenByParent.entries()) {
+    let index = 0;
+    let hiddenGroupIndex = 0;
+
+    while (index < children.length) {
+      const child = children[index]!;
+      if (!shouldGroupHiddenChild(child, radiusScale, minVisibleWidth)) {
+        groupedNodes.push({
+          node: child,
+          isGroupedHidden: false,
+          hiddenCount: 0,
+          key: pathKey(child.path),
+          colorPath: child.path,
+          outerDepth: child.depth,
+        });
+        index += 1;
+        continue;
+      }
+
+      let runEnd = index;
+      while (
+        runEnd + 1 < children.length &&
+        shouldGroupHiddenChild(children[runEnd + 1]!, radiusScale, minVisibleWidth)
+      ) {
+        runEnd += 1;
+      }
+
+      const run = children.slice(index, runEnd + 1);
+      const first = run[0]!;
+      const last = run[run.length - 1]!;
+      const hiddenCount = run.length;
+      const groupedMagnitude = run.reduce((sum, node) => sum + node.magnitude, 0);
+
+      groupedNodes.push({
+        node: {
+          path: first.path.slice(0, -1).concat([`${hiddenCount} more`]),
+          name: `${hiddenCount} more`,
+          depth: first.depth,
+          magnitude: groupedMagnitude,
+          startAngle: first.startAngle,
+          endAngle: last.endAngle,
+        },
+        isGroupedHidden: true,
+        hiddenCount,
+        key: `${parentKey}/[${hiddenCount}-more-${hiddenGroupIndex}]`,
+        colorPath: first.path,
+        outerDepth: first.depth,
+      });
+
+      hiddenGroupIndex += 1;
+      index = runEnd + 1;
     }
   }
 
+  const sortedNodes = groupedNodes.sort((left, right) => {
+    if (left.node.depth !== right.node.depth) {
+      return left.node.depth - right.node.depth;
+    }
+    if (left.node.startAngle !== right.node.startAngle) {
+      return left.node.startAngle - right.node.startAngle;
+    }
+    if (left.node.endAngle !== right.node.endAngle) {
+      return left.node.endAngle - right.node.endAngle;
+    }
+    return left.key.localeCompare(right.key);
+  });
+
+  const parentKeys = new Set(sortedNodes.map((entry) => pathKey(entry.node.path.slice(0, -1))));
   return {
-    visibleNodes,
-    hiddenChildParents,
+    visibleNodes: sortedNodes.map((entry) => ({
+      ...entry,
+      outerDepth: parentKeys.has(pathKey(entry.node.path)) ? entry.node.depth : maxDepth,
+    })),
   };
+}
+
+function shouldGroupHiddenChild(
+  child: ChartLayoutNode,
+  radiusScale: (depth: number) => number,
+  minVisibleWidth: number,
+): boolean {
+  const innerRadius = radiusScale(child.depth - 1);
+  const outerRadius = radiusScale(child.depth);
+  const angleSpan = Math.max(0, child.endAngle - child.startAngle);
+  const widthEstimate = angleSpan * (innerRadius + outerRadius);
+  return widthEstimate < minVisibleWidth;
 }
 
 interface WedgeLabel {
@@ -1017,18 +1160,18 @@ function createWedgeLabel(
   node: ChartLayoutNode,
   innerRadius: number,
   outerRadius: number,
-  totalMagnitude: number,
   maxDepth: number,
+  outerDepth: number,
 ): WedgeLabel | null {
-  const isOuterRing = maxDepth <= 1 || node.depth === maxDepth;
+  const isOuterRing = maxDepth <= 1 || outerDepth >= maxDepth;
   const angleSpan = node.endAngle - node.startAngle;
   const ringThickness = outerRadius - innerRadius;
   const radius = innerRadius + ringThickness * 0.56;
   const tangentialSpan = radius * angleSpan;
 
-  const minAngleSpan = isOuterRing ? 0.045 : 0.09;
-  const minRingThickness = isOuterRing ? 12 : 16;
-  const minTangentialSpan = isOuterRing ? 12 : 42;
+  const minAngleSpan = isOuterRing ? 0.018 : 0.055;
+  const minRingThickness = isOuterRing ? 10 : 14;
+  const minTangentialSpan = isOuterRing ? 6 : 18;
 
   if (
     angleSpan < minAngleSpan ||
@@ -1038,15 +1181,14 @@ function createWedgeLabel(
     return null;
   }
 
-  const percentage = totalMagnitude > 0 ? (node.magnitude / totalMagnitude) * 100 : 0;
   const midAngle = (node.startAngle + node.endAngle) / 2;
   const point = polarPoint(radius, midAngle);
 
   const availableTextLength = isOuterRing
     ? Math.max(0, ringThickness - 6)
     : Math.max(0, tangentialSpan - 4);
-  const maxChars = Math.max(isOuterRing ? 4 : 8, Math.floor(availableTextLength / 7.2));
-  const text = ellipsize(`${node.name} ${percentage.toFixed(1)}%`, maxChars);
+  const maxChars = Math.max(isOuterRing ? 3 : 6, Math.floor(availableTextLength / 6.8));
+  const text = ellipsize(node.name, maxChars);
   const baseRotation = isOuterRing ? (midAngle * 180) / Math.PI - 90 : (midAngle * 180) / Math.PI;
   const normalizedRotation = normalizeDegrees(baseRotation);
   const flip = normalizedRotation > 90 || normalizedRotation < -90;
@@ -1068,7 +1210,7 @@ function ellipsize(value: string, maxLength: number): string {
   return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
-function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string, string> {
+export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string, string> {
   const colors = new Map<string, string>();
   if (!layout || layout.nodes.length === 0) {
     return colors;
@@ -1077,6 +1219,10 @@ function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string, strin
   const root = layout.nodes.find((node) => node.depth === 0) ?? layout.nodes[0]!;
   const childrenByParent = new Map<string, ChartLayoutNode[]>();
   for (const node of layout.nodes) {
+    if (isUnclassifiedNodeName(node.name)) {
+      colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
+      continue;
+    }
     if (node.depth === 0) {
       continue;
     }
@@ -1098,7 +1244,7 @@ function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string, strin
     });
   });
 
-  const maxDepth = layout.nodes.reduce((max, node) => Math.max(max, node.depth), 0);
+  const maxDepth = computeLayoutDataMaxDepth(layout);
   const depthNormalizer = maxDepth > 8 ? 8 : Math.max(maxDepth, 1);
   const lightnessFactor = (KRONA_LIGHTNESS_MAX - KRONA_LIGHTNESS_BASE) / depthNormalizer;
 
@@ -1109,7 +1255,7 @@ function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string, strin
     }
 
     if (node.depth > 0) {
-      if (node.magnitude <= 0) {
+      if (node.magnitude <= 0 || isUnclassifiedNodeName(node.name)) {
         colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
       } else {
         const lightness = Math.min(
@@ -1251,6 +1397,31 @@ function normalizeDegrees(angle: number): number {
     normalized -= 360;
   }
   return normalized;
+}
+
+function isUnclassifiedNodeName(name: string): boolean {
+  return name.trim().toLowerCase().startsWith("[other ");
+}
+
+function computeLayoutDataMaxDepth(layout: ChartLayoutResult | null): number {
+  if (!layout || layout.nodes.length === 0) {
+    return 0;
+  }
+
+  let maxDepth = 0;
+  for (const node of layout.nodes) {
+    if (node.depth <= 0 || isUnclassifiedNodeName(node.name)) {
+      continue;
+    }
+    if (node.depth > maxDepth) {
+      maxDepth = node.depth;
+    }
+  }
+
+  if (maxDepth > 0) {
+    return maxDepth;
+  }
+  return layout.nodes.reduce((max, node) => Math.max(max, node.depth), 0);
 }
 
 function isUnassignedMembersKey(key: string): boolean {
