@@ -31,3 +31,16 @@ npm run format
 npm run typecheck
 npm run test
 ```
+
+## Publish (GitHub Pages)
+
+```bash
+npm run publish:site
+```
+
+This runs `tools/publish.py`, which:
+
+- bumps `package.json` version and creates a git tag (`vX.Y.Z`) on `main`
+- merges `main` into `publish`
+- runs `npm run deploy:docs` (`build` + sync `dist/` into `docs/`)
+- commits/pushes publish artifacts

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "deploy:docs": "npm run build && mkdir -p docs && rsync -a --delete dist/ docs/ && touch docs/.nojekyll",
+    "publish:site": "python3 tools/publish.py",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
