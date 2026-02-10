@@ -124,11 +124,55 @@ button:disabled {
   padding: 10px;
   display: grid;
   gap: 8px;
+  cursor: pointer;
+}
+
+.project-item:focus-visible {
+  outline: 2px solid #1f6f4d;
+  outline-offset: 2px;
 }
 
 .project-item.active {
   border-color: #1f6f4d;
   background: #f0faf5;
+}
+
+.project-datasets {
+  border-top: 1px solid #d3ddd7;
+  padding-top: 8px;
+}
+
+.project-datasets h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.project-name-button {
+  border: 0;
+  background: transparent;
+  color: #18392c;
+  font-weight: 700;
+  padding: 0;
+  text-align: left;
+}
+
+.project-name-button:hover {
+  color: #1f6f4d;
+  text-decoration: underline;
+}
+
+.project-name-input {
+  max-width: 420px;
+  min-width: 180px;
+}
+
+.storage-warning {
+  border: 1px solid #e2c77c;
+  background: #fff9e8;
+  color: #6b4b0f;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
 }
 
 .muted {
@@ -235,6 +279,83 @@ button:disabled {
 }
 
 .import-popover-footer {
+  justify-content: flex-end;
+}
+
+.delete-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  background: rgba(12, 31, 23, 0.45);
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.delete-confirm-dialog {
+  width: min(520px, calc(100vw - 40px));
+  display: grid;
+  gap: 10px;
+}
+
+.delete-confirm-actions {
+  justify-content: flex-end;
+}
+
+.chart-settings-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(12, 31, 23, 0.45);
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.chart-settings-popover {
+  width: min(860px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+}
+
+.chart-settings-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chart-settings-popover-header h2 {
+  margin: 0;
+}
+
+.chart-settings-popover-body {
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.chart-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.chart-color-input {
+  width: 52px;
+  min-width: 52px;
+  padding: 3px;
+}
+
+.chart-dimension-row select {
+  width: 118px;
+  min-width: 118px;
+}
+
+.chart-settings-popover-footer {
   justify-content: flex-end;
 }
 
@@ -434,6 +555,27 @@ button:disabled {
   .import-popover {
     width: calc(100vw - 20px);
     max-height: calc(100vh - 20px);
+  }
+
+  .delete-confirm-backdrop {
+    padding: 10px;
+  }
+
+  .delete-confirm-dialog {
+    width: calc(100vw - 20px);
+  }
+
+  .chart-settings-popover-backdrop {
+    padding: 10px;
+  }
+
+  .chart-settings-popover {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .chart-settings-grid {
+    grid-template-columns: 1fr;
   }
 }
 

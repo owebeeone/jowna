@@ -1,6 +1,6 @@
 import { useGrip, useNumberGrip } from "@owebeeone/grip-react";
-import { useMemo } from "react";
-import type { TreeNode } from "../domain";
+import { useMemo, useState, type ChangeEvent } from "react";
+import type { ChartSettings, TreeNode } from "../domain";
 import {
   createStandaloneChartDocument,
   toStandaloneChartFileName,
@@ -18,6 +18,8 @@ import {
   CHART_LAYOUT,
   CHART_SELECTED_PATH,
   CHART_SETTINGS_STATE,
+  CHART_SETTINGS_STATE_TAP,
+  DEFAULT_CHART_SETTINGS,
   JOWNA_ACTIONS,
 } from "../grips";
 
@@ -38,12 +40,34 @@ export function ChartScreen() {
   const history = useGrip(CHART_HISTORY) ?? [];
   const historyIndex = useGrip(CHART_HISTORY_INDEX) ?? -1;
   const chartSettings = useGrip(CHART_SETTINGS_STATE);
+  const chartSettingsTap = useGrip(CHART_SETTINGS_STATE_TAP);
   const depthLimit = useGrip(CHART_DEPTH_LIMIT) ?? 0;
+  const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
 
   const depthBind = useNumberGrip(CHART_DEPTH_LIMIT, CHART_DEPTH_LIMIT_TAP, {
     emptyAs: 0,
     clamp: { min: 0, max: 12 },
   });
+
+  const resolvedChartSettings = chartSettings ?? DEFAULT_CHART_SETTINGS;
+  const chartSurfaceStyle = {
+    background: resolvedChartSettings.background,
+    borderWidth: `${Math.max(0, resolvedChartSettings.borderWidth)}px`,
+    borderColor: resolvedChartSettings.borderColor,
+  };
+  const chartCanvasStyle = {
+    width:
+      typeof resolvedChartSettings.width === "number"
+        ? `${Math.max(240, resolvedChartSettings.width)}px`
+        : undefined,
+    height:
+      typeof resolvedChartSettings.height === "number"
+        ? `${Math.max(240, resolvedChartSettings.height)}px`
+        : undefined,
+  };
+  const labelFontSize = Math.max(8, resolvedChartSettings.fontSizePx);
+  const widthMode = typeof resolvedChartSettings.width === "number" ? "custom" : "fit";
+  const heightMode = typeof resolvedChartSettings.height === "number" ? "custom" : "fit";
 
   const kronaColors = useMemo(() => buildKronaColorMap(chartLayout ?? null), [chartLayout]);
 
@@ -86,10 +110,42 @@ export function ChartScreen() {
       datasetName: dataset.name,
       tree: dataset.tree,
       depthLimit,
-      chartSettings: chartSettings ?? null,
+      chartSettings: resolvedChartSettings,
     });
     downloadHtmlFile(toStandaloneChartFileName(dataset.name), html);
   };
+
+  const updateChartSettings = (partial: Partial<ChartSettings>) => {
+    chartSettingsTap?.update((current) => ({
+      ...(current ?? DEFAULT_CHART_SETTINGS),
+      ...partial,
+    }));
+  };
+
+  const updateDimensionMode = (dimension: "width" | "height", mode: "fit" | "custom") => {
+    if (mode === "fit") {
+      updateChartSettings({ [dimension]: "fit" } as Partial<ChartSettings>);
+      return;
+    }
+
+    const currentDimension = resolvedChartSettings[dimension];
+    const fallback = dimension === "width" ? 620 : 640;
+    updateChartSettings({
+      [dimension]:
+        typeof currentDimension === "number" && Number.isFinite(currentDimension)
+          ? Math.max(240, currentDimension)
+          : fallback,
+    } as Partial<ChartSettings>);
+  };
+
+  const onDimensionValueChange =
+    (dimension: "width" | "height") => (event: ChangeEvent<HTMLInputElement>) => {
+      const parsed = Number.parseInt(event.target.value, 10);
+      if (!Number.isFinite(parsed)) {
+        return;
+      }
+      updateChartSettings({ [dimension]: Math.max(240, parsed) } as Partial<ChartSettings>);
+    };
 
   return (
     <div className="app-shell">
@@ -100,6 +156,9 @@ export function ChartScreen() {
             <div className="muted">{dataset?.name ?? "No active dataset"}</div>
           </div>
           <div className="row">
+            <button className="ghost" onClick={() => setSettingsPopoverOpen(true)}>
+              Chart Settings
+            </button>
             <button className="ghost" onClick={onDownloadHtml} disabled={!dataset}>
               Download HTML
             </button>
@@ -163,13 +222,21 @@ export function ChartScreen() {
         )}
 
         <div className="chart-layout">
-          <section className="chart-surface chart-surface-krona">
+          <section className="chart-surface chart-surface-krona" style={chartSurfaceStyle}>
             {!dataset || !chartLayout ? (
               <div className="muted">No chart data yet. Import a dataset and open chart.</div>
             ) : (
               <>
-                <svg className="chart-canvas chart-canvas-krona" viewBox="0 0 620 620" role="img">
-                  <g transform="translate(310 310)">
+                <svg
+                  className="chart-canvas chart-canvas-krona"
+                  viewBox="0 0 620 620"
+                  role="img"
+                  style={chartCanvasStyle}
+                >
+                  <g
+                    transform="translate(310 310)"
+                    style={{ fontFamily: resolvedChartSettings.fontFamily }}
+                  >
                     {chartLayout.nodes
                       .filter((node) => node.depth > 0)
                       .map((node) => {
@@ -198,11 +265,9 @@ export function ChartScreen() {
                             className={`chart-wedge ${isActive ? "is-active" : ""} ${isFocused ? "is-focus" : ""}`}
                             d={pathData}
                             fill={fill}
-                            stroke={
-                              isActive ? "#062d1e" : (chartSettings?.wedgeStrokeColor ?? "#ffffff")
-                            }
+                            stroke={isActive ? "#062d1e" : resolvedChartSettings.wedgeStrokeColor}
                             strokeWidth={
-                              isActive ? 2.2 : Math.max(0.4, chartSettings?.wedgeStrokeWidth ?? 1)
+                              isActive ? 2.2 : Math.max(0.4, resolvedChartSettings.wedgeStrokeWidth)
                             }
                             opacity={hoverPath ? (isActive ? 1 : 0.42) : isFocused ? 1 : 0.92}
                             role="button"
@@ -246,6 +311,10 @@ export function ChartScreen() {
                             textAnchor={label.anchor}
                             dominantBaseline="middle"
                             transform={`rotate(${label.rotate} ${label.x} ${label.y})`}
+                            style={{
+                              fontFamily: resolvedChartSettings.fontFamily,
+                              fontSize: `${labelFontSize}px`,
+                            }}
                           >
                             {label.text}
                           </text>
@@ -363,6 +432,217 @@ export function ChartScreen() {
           </aside>
         </div>
       </div>
+
+      {settingsPopoverOpen && (
+        <div
+          className="chart-settings-popover-backdrop"
+          onClick={() => setSettingsPopoverOpen(false)}
+        >
+          <section
+            className="panel chart-settings-popover"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Chart settings"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="chart-settings-popover-header">
+              <h2>Chart Settings</h2>
+              <button
+                className="ghost popover-x"
+                onClick={() => setSettingsPopoverOpen(false)}
+                aria-label="Close chart settings"
+              >
+                X
+              </button>
+            </header>
+
+            <div className="chart-settings-popover-body">
+              <div className="chart-settings-grid">
+                <label className="stack">
+                  <span className="muted">Background</span>
+                  <div className="row">
+                    <input
+                      className="chart-color-input"
+                      type="color"
+                      value={toColorInputValue(resolvedChartSettings.background, "#f6f8f7")}
+                      onChange={(event) => updateChartSettings({ background: event.target.value })}
+                    />
+                    <input
+                      value={resolvedChartSettings.background}
+                      onChange={(event) => updateChartSettings({ background: event.target.value })}
+                    />
+                  </div>
+                </label>
+
+                <label className="stack">
+                  <span className="muted">Border Color</span>
+                  <div className="row">
+                    <input
+                      className="chart-color-input"
+                      type="color"
+                      value={toColorInputValue(resolvedChartSettings.borderColor, "#b7c2bc")}
+                      onChange={(event) => updateChartSettings({ borderColor: event.target.value })}
+                    />
+                    <input
+                      value={resolvedChartSettings.borderColor}
+                      onChange={(event) => updateChartSettings({ borderColor: event.target.value })}
+                    />
+                  </div>
+                </label>
+
+                <label className="stack">
+                  <span className="muted">Border Width</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.2}
+                    value={resolvedChartSettings.borderWidth}
+                    onChange={(event) => {
+                      const parsed = Number.parseFloat(event.target.value);
+                      if (!Number.isFinite(parsed)) {
+                        return;
+                      }
+                      updateChartSettings({ borderWidth: Math.max(0, parsed) });
+                    }}
+                  />
+                </label>
+
+                <label className="stack">
+                  <span className="muted">Wedge Stroke Color</span>
+                  <div className="row">
+                    <input
+                      className="chart-color-input"
+                      type="color"
+                      value={toColorInputValue(resolvedChartSettings.wedgeStrokeColor, "#ffffff")}
+                      onChange={(event) =>
+                        updateChartSettings({ wedgeStrokeColor: event.target.value })
+                      }
+                    />
+                    <input
+                      value={resolvedChartSettings.wedgeStrokeColor}
+                      onChange={(event) =>
+                        updateChartSettings({ wedgeStrokeColor: event.target.value })
+                      }
+                    />
+                  </div>
+                </label>
+
+                <label className="stack">
+                  <span className="muted">Wedge Stroke Width</span>
+                  <input
+                    type="number"
+                    min={0.4}
+                    step={0.2}
+                    value={resolvedChartSettings.wedgeStrokeWidth}
+                    onChange={(event) => {
+                      const parsed = Number.parseFloat(event.target.value);
+                      if (!Number.isFinite(parsed)) {
+                        return;
+                      }
+                      updateChartSettings({ wedgeStrokeWidth: Math.max(0.4, parsed) });
+                    }}
+                  />
+                </label>
+
+                <label className="stack">
+                  <span className="muted">Font Family</span>
+                  <input
+                    value={resolvedChartSettings.fontFamily}
+                    onChange={(event) => updateChartSettings({ fontFamily: event.target.value })}
+                  />
+                </label>
+
+                <label className="stack">
+                  <span className="muted">Font Size (px)</span>
+                  <input
+                    type="number"
+                    min={8}
+                    step={1}
+                    value={resolvedChartSettings.fontSizePx}
+                    onChange={(event) => {
+                      const parsed = Number.parseFloat(event.target.value);
+                      if (!Number.isFinite(parsed)) {
+                        return;
+                      }
+                      updateChartSettings({ fontSizePx: Math.max(8, parsed) });
+                    }}
+                  />
+                </label>
+
+                <div className="stack">
+                  <span className="muted">Chart Width</span>
+                  <div className="row chart-dimension-row">
+                    <select
+                      value={widthMode}
+                      onChange={(event) =>
+                        updateDimensionMode("width", event.target.value as "fit" | "custom")
+                      }
+                    >
+                      <option value="fit">Fit</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={240}
+                      step={10}
+                      value={
+                        typeof resolvedChartSettings.width === "number"
+                          ? resolvedChartSettings.width
+                          : ""
+                      }
+                      onChange={onDimensionValueChange("width")}
+                      disabled={widthMode === "fit"}
+                    />
+                  </div>
+                </div>
+
+                <div className="stack">
+                  <span className="muted">Chart Height</span>
+                  <div className="row chart-dimension-row">
+                    <select
+                      value={heightMode}
+                      onChange={(event) =>
+                        updateDimensionMode("height", event.target.value as "fit" | "custom")
+                      }
+                    >
+                      <option value="fit">Fit</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={240}
+                      step={10}
+                      value={
+                        typeof resolvedChartSettings.height === "number"
+                          ? resolvedChartSettings.height
+                          : ""
+                      }
+                      onChange={onDimensionValueChange("height")}
+                      disabled={heightMode === "fit"}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <footer className="row chart-settings-popover-footer">
+              <button
+                className="ghost"
+                onClick={() =>
+                  chartSettingsTap?.set({
+                    ...DEFAULT_CHART_SETTINGS,
+                  })
+                }
+              >
+                Reset Defaults
+              </button>
+              <button className="ghost" onClick={() => setSettingsPopoverOpen(false)}>
+                Close
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -678,6 +958,17 @@ function pathEquals(left: string[], right: string[]): boolean {
 
 function pathKey(path: string[]): string {
   return path.join("/");
+}
+
+function toColorInputValue(value: string, fallback: string): string {
+  const normalized = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+    return normalized;
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+  }
+  return fallback;
 }
 
 function normalizeDegrees(angle: number): number {

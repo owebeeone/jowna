@@ -22,6 +22,9 @@ export interface JownaActions {
   createProject: (name: string) => Promise<void>;
   copyProject: (projectId: string, nextName?: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
+  renameProject: (projectId: string, nextName: string) => Promise<void>;
+  exportProjectArchive: (projectId: string) => Promise<void>;
+  importProjectArchive: (file: File) => Promise<void>;
   renameDataset: (datasetId: string, nextName: string) => Promise<void>;
   openProject: (projectId: string) => Promise<void>;
   parsePreview: () => Promise<void>;

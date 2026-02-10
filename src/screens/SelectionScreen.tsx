@@ -1,5 +1,6 @@
 import { useGrip, useTextGrip } from "@owebeeone/grip-react";
-import { useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import type { Dataset } from "../domain";
 import {
   ACTIVE_DATASET_ID,
   ACTIVE_PROJECT_ID,
@@ -51,8 +52,14 @@ export function SelectionScreen() {
   const datasetNameBind = useTextGrip(IMPORT_DATASET_NAME, IMPORT_DATASET_NAME_TAP);
   const previewFilterBind = useTextGrip(PREVIEW_FILTER, PREVIEW_FILTER_TAP);
   const urlInputBind = useTextGrip(IMPORT_URL_INPUT, IMPORT_URL_INPUT_TAP);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState("");
   const [editingDatasetId, setEditingDatasetId] = useState<string | null>(null);
   const [editingDatasetName, setEditingDatasetName] = useState("");
+  const [projectTransferNotice, setProjectTransferNotice] = useState<string | null>(null);
+  const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const projectArchiveInputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredRows = (importPreview?.rows ?? []).filter((row) => {
     const query = previewFilterBind.value.trim().toLowerCase();
@@ -99,6 +106,124 @@ export function SelectionScreen() {
     importPopoverOpenTap?.set(true);
   };
 
+  const onSelectProject = async (projectId: string) => {
+    if (!actions) {
+      return;
+    }
+    await actions.openProject(projectId);
+  };
+
+  const onDownloadProject = async (projectId: string, projectName: string) => {
+    if (!actions) {
+      return;
+    }
+
+    try {
+      await actions.exportProjectArchive(projectId);
+      setProjectTransferNotice(`Downloaded archive for '${projectName}'.`);
+    } catch (error) {
+      console.warn("Failed exporting project archive", error);
+      const message = error instanceof Error ? error.message : "Unknown export error.";
+      setProjectTransferNotice(`Warning: ${message}`);
+    }
+  };
+
+  const onUploadProjectClick = () => {
+    projectArchiveInputRef.current?.click();
+  };
+
+  const onProjectArchiveFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file || !actions) {
+      return;
+    }
+
+    try {
+      await actions.importProjectArchive(file);
+      setProjectTransferNotice(`Imported project from '${file.name}'.`);
+    } catch (error) {
+      console.warn("Failed importing project archive", error);
+      const message = error instanceof Error ? error.message : "Unknown import error.";
+      setProjectTransferNotice(`Warning: ${message}`);
+    }
+  };
+
+  const pendingDeleteProject =
+    pendingDeleteProjectId !== null
+      ? (projects.find((project) => project.id === pendingDeleteProjectId) ?? null)
+      : null;
+  const canConfirmDelete = deleteConfirmText.trim().toLowerCase() === "delete";
+
+  const onRequestDeleteProject = (projectId: string) => {
+    setPendingDeleteProjectId(projectId);
+    setDeleteConfirmText("");
+  };
+
+  const onCancelDeleteProject = () => {
+    setPendingDeleteProjectId(null);
+    setDeleteConfirmText("");
+  };
+
+  const onConfirmDeleteProject = async () => {
+    if (!pendingDeleteProject || !canConfirmDelete || !actions) {
+      return;
+    }
+
+    try {
+      await actions.deleteProject(pendingDeleteProject.id);
+      setProjectTransferNotice(`Deleted project '${pendingDeleteProject.name}'.`);
+    } catch (error) {
+      console.warn("Failed deleting project", error);
+      const message = error instanceof Error ? error.message : "Unknown delete error.";
+      setProjectTransferNotice(`Warning: ${message}`);
+    } finally {
+      onCancelDeleteProject();
+    }
+  };
+
+  const onDownloadDatasetJson = (dataset: Dataset) => {
+    try {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        dataset,
+      };
+      downloadTextFile(
+        toDatasetJsonFileName(dataset.name),
+        JSON.stringify(payload, null, 2),
+        "application/json",
+      );
+      setProjectTransferNotice(`Downloaded dataset '${dataset.name}' JSON.`);
+    } catch (error) {
+      console.warn("Failed exporting dataset JSON", error);
+      const message = error instanceof Error ? error.message : "Unknown dataset export error.";
+      setProjectTransferNotice(`Warning: ${message}`);
+    }
+  };
+
+  const onStartProjectRename = (projectId: string, currentName: string) => {
+    setEditingProjectId(projectId);
+    setEditingProjectName(currentName);
+  };
+
+  const onCancelProjectRename = () => {
+    setEditingProjectId(null);
+    setEditingProjectName("");
+  };
+
+  const onCommitProjectRename = async (projectId: string) => {
+    const project = projects.find((candidate) => candidate.id === projectId);
+    const nextNameInput = editingProjectName.trim();
+    const nextName = nextNameInput.length > 0 ? nextNameInput : (project?.name ?? "");
+    onCancelProjectRename();
+
+    if (!actions || !project || nextName.length === 0 || nextName === project.name) {
+      return;
+    }
+
+    await actions.renameProject(projectId, nextName);
+  };
+
   const onStartDatasetRename = (datasetId: string, currentName: string) => {
     setEditingDatasetId(datasetId);
     setEditingDatasetName(currentName);
@@ -132,6 +257,19 @@ export function SelectionScreen() {
     if (event.key === "Escape") {
       event.preventDefault();
       onCancelDatasetRename();
+    }
+  };
+
+  const onProjectRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.currentTarget.blur();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancelProjectRename();
     }
   };
 
@@ -216,26 +354,81 @@ export function SelectionScreen() {
               <button className="ghost" onClick={openImportPopover}>
                 Import Tool
               </button>
+              <button className="ghost" onClick={onUploadProjectClick} disabled={!actions}>
+                Upload Project
+              </button>
               <ChartIconButton
                 onClick={() => actions?.openChart(activeDatasetId)}
                 disabled={!actions || !activeDatasetId}
                 label="Open active chart"
               />
             </div>
+            <input
+              ref={projectArchiveInputRef}
+              type="file"
+              accept=".jowna,.jowna-project,application/json,text/json"
+              style={{ display: "none" }}
+              onChange={onProjectArchiveFileChange}
+            />
+            <div className="storage-warning">
+              Warning: project data is stored in your browser on this computer and may be removed by
+              site-data/browser cleanup.
+            </div>
+            {projectTransferNotice && <div className="muted">{projectTransferNotice}</div>}
 
             <ul className="project-list">
               {projects.map((project) => {
                 const isActive = project.id === activeProjectId;
                 return (
-                  <li key={project.id} className={`project-item${isActive ? " active" : ""}`}>
+                  <li
+                    key={project.id}
+                    className={`project-item${isActive ? " active" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      void onSelectProject(project.id);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) {
+                        return;
+                      }
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        void onSelectProject(project.id);
+                      }
+                    }}
+                  >
                     <div>
-                      <strong>{project.name}</strong>
+                      {editingProjectId === project.id ? (
+                        <input
+                          className="project-name-input"
+                          autoFocus
+                          value={editingProjectName}
+                          onChange={(event) => setEditingProjectName(event.target.value)}
+                          onClick={(event) => event.stopPropagation()}
+                          onBlur={() => {
+                            void onCommitProjectRename(project.id);
+                          }}
+                          onKeyDown={onProjectRenameKeyDown}
+                        />
+                      ) : (
+                        <button
+                          className="project-name-button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onStartProjectRename(project.id, project.name);
+                          }}
+                        >
+                          {project.name}
+                        </button>
+                      )}
                     </div>
                     <div className="muted">datasets: {project.datasetIds.length}</div>
                     <div className="row">
                       <button
                         className="ghost"
-                        onClick={() => {
+                        onClick={(event) => {
+                          event.stopPropagation();
                           void onOpenImportForProject(project.id);
                         }}
                       >
@@ -243,55 +436,94 @@ export function SelectionScreen() {
                       </button>
                       <button
                         className="ghost"
-                        onClick={() => actions?.copyProject(project.id, `${project.name} Copy`)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void actions?.copyProject(project.id, `${project.name} Copy`);
+                        }}
                       >
                         Copy
                       </button>
-                      <button className="danger" onClick={() => actions?.deleteProject(project.id)}>
+                      <button
+                        className="ghost"
+                        title="Download the Jowna project file."
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void onDownloadProject(project.id, project.name);
+                        }}
+                      >
+                        Download Jowna
+                      </button>
+                      <button
+                        className="danger"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRequestDeleteProject(project.id);
+                        }}
+                      >
                         Delete
                       </button>
                     </div>
+
+                    {isActive && (
+                      <div
+                        className="project-datasets stack"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <h3>Datasets</h3>
+                        {datasets.length === 0 && <div className="muted">No datasets yet.</div>}
+                        {datasets.map((dataset) => (
+                          <div
+                            key={dataset.id}
+                            className="row"
+                            style={{ justifyContent: "space-between" }}
+                          >
+                            <div className="dataset-name-wrap">
+                              {editingDatasetId === dataset.id ? (
+                                <input
+                                  className="dataset-name-input"
+                                  autoFocus
+                                  value={editingDatasetName}
+                                  onChange={(event) => setEditingDatasetName(event.target.value)}
+                                  onBlur={() => {
+                                    void onCommitDatasetRename(dataset.id);
+                                  }}
+                                  onKeyDown={onDatasetRenameKeyDown}
+                                />
+                              ) : (
+                                <button
+                                  className="dataset-name-button"
+                                  onClick={() => onStartDatasetRename(dataset.id, dataset.name)}
+                                >
+                                  {dataset.name}
+                                </button>
+                              )}
+                              {dataset.id === activeDatasetId && (
+                                <span className="muted">(active)</span>
+                              )}
+                            </div>
+                            <div className="row">
+                              <button
+                                className="ghost"
+                                onClick={() => onDownloadDatasetJson(dataset)}
+                              >
+                                Download Dataset
+                              </button>
+                              <ChartIconButton
+                                className="ghost"
+                                onClick={() => actions?.openChart(dataset.id)}
+                                disabled={!actions}
+                                label={`Open chart for ${dataset.name}`}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </li>
                 );
               })}
             </ul>
-
-            <div className="stack">
-              <h3>Active Project Datasets</h3>
-              {datasets.length === 0 && <div className="muted">No datasets yet.</div>}
-              {datasets.map((dataset) => (
-                <div key={dataset.id} className="row" style={{ justifyContent: "space-between" }}>
-                  <div className="dataset-name-wrap">
-                    {editingDatasetId === dataset.id ? (
-                      <input
-                        className="dataset-name-input"
-                        autoFocus
-                        value={editingDatasetName}
-                        onChange={(event) => setEditingDatasetName(event.target.value)}
-                        onBlur={() => {
-                          void onCommitDatasetRename(dataset.id);
-                        }}
-                        onKeyDown={onDatasetRenameKeyDown}
-                      />
-                    ) : (
-                      <button
-                        className="dataset-name-button"
-                        onClick={() => onStartDatasetRename(dataset.id, dataset.name)}
-                      >
-                        {dataset.name}
-                      </button>
-                    )}
-                    {dataset.id === activeDatasetId && <span className="muted">(active)</span>}
-                  </div>
-                  <ChartIconButton
-                    className="ghost"
-                    onClick={() => actions?.openChart(dataset.id)}
-                    disabled={!actions}
-                    label={`Open chart for ${dataset.name}`}
-                  />
-                </div>
-              ))}
-            </div>
           </section>
         </div>
       </div>
@@ -562,8 +794,66 @@ export function SelectionScreen() {
           </section>
         </div>
       )}
+
+      {pendingDeleteProject && (
+        <div className="delete-confirm-backdrop" onClick={onCancelDeleteProject}>
+          <section
+            className="panel delete-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm project deletion"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3>Delete Project</h3>
+            <div>
+              Type <code>delete</code> to delete <strong>{pendingDeleteProject.name}</strong>.
+            </div>
+            <input
+              autoFocus
+              value={deleteConfirmText}
+              placeholder="delete"
+              onChange={(event) => setDeleteConfirmText(event.target.value)}
+            />
+            <div className="row delete-confirm-actions">
+              <button className="ghost" onClick={onCancelDeleteProject}>
+                Cancel
+              </button>
+              <button
+                className="danger"
+                onClick={onConfirmDeleteProject}
+                disabled={!canConfirmDelete}
+              >
+                Delete
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
+}
+
+function toDatasetJsonFileName(datasetName: string): string {
+  const normalized = datasetName
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const base = normalized.length > 0 ? normalized : "dataset";
+  return `${base}.json`;
+}
+
+function downloadTextFile(fileName: string, content: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  anchor.click();
+
+  URL.revokeObjectURL(url);
 }
 
 interface ChartIconButtonProps {

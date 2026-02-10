@@ -67,6 +67,14 @@ import { createDefaultParserRegistry, DefaultParseImportService } from "./parser
 import { grok } from "./runtime_graph";
 import { createIndexedDbStorageGateway } from "./storage/indexeddb";
 import { SunburstChartRenderer } from "./features/chart";
+import {
+  createProjectArchive,
+  materializeImportedProject,
+  parseProjectArchive,
+  PROJECT_ARCHIVE_MIME_TYPE,
+  serializeProjectArchive,
+  toProjectArchiveFileName,
+} from "./features/file-manager";
 
 let tapsRegistered = false;
 
@@ -326,6 +334,73 @@ export function registerJownaTaps(): void {
     deleteProject: async (projectId) => {
       await storage.projects.deleteProject(projectId);
       await actions.refreshProjects();
+    },
+
+    renameProject: async (projectId, nextName) => {
+      const project = await storage.projects.getProject(projectId);
+      if (!project) {
+        throw new Error(`Project '${projectId}' no longer exists.`);
+      }
+
+      const name = normalizeNonEmpty(nextName, project.name);
+      if (name === project.name) {
+        return;
+      }
+
+      await storage.projects.saveProject({
+        ...project,
+        name,
+      });
+
+      await actions.refreshProjects();
+    },
+
+    exportProjectArchive: async (projectId) => {
+      const project = await storage.projects.getProject(projectId);
+      if (!project) {
+        throw new Error(`Project '${projectId}' no longer exists.`);
+      }
+
+      const projectDatasets = await storage.datasets.listByProject(projectId);
+      const datasetById = new Map(projectDatasets.map((dataset) => [dataset.id, dataset]));
+      const orderedDatasetIds = uniqueIds([
+        ...project.datasetIds,
+        ...projectDatasets.map((d) => d.id),
+      ]);
+      const orderedDatasets = orderedDatasetIds
+        .map((datasetId) => datasetById.get(datasetId))
+        .filter((dataset): dataset is Dataset => Boolean(dataset));
+
+      const archive = createProjectArchive({
+        project,
+        datasets: orderedDatasets,
+        exportedAt: nowIso(),
+      });
+      const serialized = serializeProjectArchive(archive);
+      downloadTextFile(
+        toProjectArchiveFileName(project.name),
+        serialized,
+        PROJECT_ARCHIVE_MIME_TYPE,
+      );
+    },
+
+    importProjectArchive: async (file) => {
+      const raw = await file.text();
+      const archive = parseProjectArchive(raw);
+      const timestamp = nowIso();
+      const imported = materializeImportedProject({
+        archive,
+        nowIso: timestamp,
+        createId,
+      });
+
+      for (const dataset of imported.datasets) {
+        await storage.datasets.saveDataset(dataset);
+      }
+      await storage.projects.saveProject(imported.project);
+
+      await actions.refreshProjects();
+      await actions.openProject(imported.project.id);
     },
 
     renameDataset: async (datasetId, nextName) => {
@@ -608,4 +683,17 @@ function normalizeNonEmpty(value: string, fallback: string): string {
 
 function normalizePath(path: string[]): string[] {
   return path.map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+}
+
+function downloadTextFile(fileName: string, content: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  anchor.click();
+
+  URL.revokeObjectURL(url);
 }
