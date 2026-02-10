@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ChartLayoutResult } from "../features/chart";
-import { buildKronaColorMap, createWedgeRenderPlan, resolveRenderDepth } from "./ChartScreen";
+import {
+  buildKronaColorMap,
+  createWedgeRenderPlan,
+  resolveNodeFillColor,
+  resolveRenderDepth,
+} from "./ChartScreen";
 
 describe("ChartScreen wedge render plan", () => {
   it("extends terminal wedges to the configured outer depth", () => {
@@ -299,5 +304,108 @@ describe("buildKronaColorMap", () => {
     expect(colors.get("Root/E")).toBe("rgb(101,106,204)");
     expect(colors.get("Root/F")).toBe("rgb(174,101,204)");
     expect(colors.get("Root/G")).toBe("rgb(204,101,170)");
+  });
+});
+
+describe("resolveNodeFillColor", () => {
+  it("falls back to nearest colored ancestor when exact path is missing", () => {
+    const colors = new Map<string, string>([
+      ["Root/A", "rgb(12,34,56)"],
+      ["Root/B", "rgb(78,90,12)"],
+    ]);
+
+    expect(resolveNodeFillColor(colors, [["Root", "A", "Leaf"]])).toBe("rgb(12,34,56)");
+    expect(resolveNodeFillColor(colors, [["Root", "B", "Leaf", "Sub"]])).toBe("rgb(78,90,12)");
+    expect(resolveNodeFillColor(colors, [["Root", "Missing"]], "rgb(220,220,220)")).toBe(
+      "rgb(220,220,220)",
+    );
+  });
+
+  it("supports base-layout color anchoring when focused layout would differ", () => {
+    const baseLayout: ChartLayoutResult = {
+      totalMagnitude: 100,
+      nodes: [
+        {
+          path: ["Root"],
+          name: "Root",
+          depth: 0,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "X"],
+          name: "X",
+          depth: 1,
+          magnitude: 10,
+          startAngle: 0,
+          endAngle: Math.PI * 0.2,
+        },
+        {
+          path: ["Root", "A"],
+          name: "A",
+          depth: 1,
+          magnitude: 90,
+          startAngle: Math.PI * 0.2,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "A", "A1"],
+          name: "A1",
+          depth: 2,
+          magnitude: 45,
+          startAngle: Math.PI * 0.2,
+          endAngle: Math.PI * 1.1,
+        },
+        {
+          path: ["Root", "A", "A2"],
+          name: "A2",
+          depth: 2,
+          magnitude: 45,
+          startAngle: Math.PI * 1.1,
+          endAngle: Math.PI * 2,
+        },
+      ],
+    };
+
+    const focusedLayout: ChartLayoutResult = {
+      totalMagnitude: 90,
+      nodes: [
+        {
+          path: ["Root", "A"],
+          name: "A",
+          depth: 0,
+          magnitude: 90,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "A", "A1"],
+          name: "A1",
+          depth: 1,
+          magnitude: 45,
+          startAngle: 0,
+          endAngle: Math.PI,
+        },
+        {
+          path: ["Root", "A", "A2"],
+          name: "A2",
+          depth: 1,
+          magnitude: 45,
+          startAngle: Math.PI,
+          endAngle: Math.PI * 2,
+        },
+      ],
+    };
+
+    const baseColors = buildKronaColorMap(baseLayout);
+    const focusedColors = buildKronaColorMap(focusedLayout);
+    const targetPath = ["Root", "A", "A1"];
+    const targetKey = targetPath.join("/");
+
+    expect(baseColors.get(targetKey)).toBeTruthy();
+    expect(focusedColors.get(targetKey)).toBeTruthy();
+    expect(baseColors.get(targetKey)).not.toBe(focusedColors.get(targetKey));
+    expect(resolveNodeFillColor(baseColors, [targetPath])).toBe(baseColors.get(targetKey));
   });
 });

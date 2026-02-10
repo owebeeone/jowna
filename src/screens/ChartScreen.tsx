@@ -2,6 +2,7 @@ import { useGrip, useNumberGrip } from "@owebeeone/grip-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { ChartSettings, TreeNode } from "../domain";
 import {
+  SunburstChartRenderer,
   createStandaloneChartDocument,
   toStandaloneChartFileName,
   type ChartLayoutNode,
@@ -109,7 +110,25 @@ export function ChartScreen() {
     return [{ label: `Custom (${current})`, value: current }, ...CHART_FONT_OPTIONS];
   }, [resolvedChartSettings.fontFamily]);
 
-  const kronaColors = useMemo(() => buildKronaColorMap(chartLayout ?? null), [chartLayout]);
+  const colorLayout = useMemo(() => {
+    if (!dataset) {
+      return null;
+    }
+    const renderer = new SunburstChartRenderer();
+    return renderer.computeLayout({
+      root: dataset.tree,
+      settings: {
+        ...DEFAULT_CHART_SETTINGS,
+        collapseRedundant: resolvedChartSettings.collapseRedundant,
+      },
+      focusedPath: null,
+      depthLimit: null,
+    });
+  }, [dataset, resolvedChartSettings.collapseRedundant]);
+  const kronaColors = useMemo(
+    () => buildKronaColorMap(colorLayout ?? chartLayout ?? null),
+    [colorLayout, chartLayout],
+  );
 
   const resolvedFocusPath = dataset ? (focusPath ?? [dataset.tree.name]) : null;
   const activePath = hoverPath ?? selectedPath ?? resolvedFocusPath;
@@ -131,7 +150,9 @@ export function ChartScreen() {
     activeAttributes.filter(([key, value]) => isMembersListKey(key, value)).map(([key]) => key),
   );
   const unassignedMembersLabel = "Unassigned Members";
-  const visibleAttributes = activeAttributes.filter(([key]) => !memberAttributeKeys.has(key));
+  const visibleAttributes = activeAttributes.filter(
+    ([key]) => !memberAttributeKeys.has(key) && !isUnassignedAttributeKey(key),
+  );
   const membersPopoverOpen = Boolean(activePathKey && openMembersPopoverForPath === activePathKey);
 
   const totalMagnitude = chartLayout?.totalMagnitude ?? 0;
@@ -451,8 +472,13 @@ export function ChartScreen() {
                         isInteractive && resolvedFocusPath
                           ? pathEquals(interactionPath, resolvedFocusPath)
                           : false;
-                      const fill =
-                        kronaColors.get(pathKey(entry.colorPath)) ?? KRONA_UNCLASSIFIED_COLOR;
+                      const fill = isUnclassifiedNodeName(node.name)
+                        ? KRONA_UNCLASSIFIED_COLOR
+                        : resolveNodeFillColor(
+                            kronaColors,
+                            [entry.colorPath, interactionPath, node.path],
+                            KRONA_UNCLASSIFIED_COLOR,
+                          );
                       const wedgeKey = entry.key;
                       const titleText = entry.isGroupedHidden
                         ? `${entry.hiddenCount} more`
@@ -692,8 +718,11 @@ export function ChartScreen() {
                           <span
                             className="legend-dot"
                             style={{
-                              background:
-                                kronaColors.get(pathKey(node.path)) ?? KRONA_UNCLASSIFIED_COLOR,
+                              background: resolveNodeFillColor(
+                                kronaColors,
+                                [node.path],
+                                KRONA_UNCLASSIFIED_COLOR,
+                              ),
                             }}
                           />
                           <span className="key-label">{node.name}</span>
@@ -1091,8 +1120,8 @@ function arcPath(
 
 function polarPoint(radius: number, angle: number): { x: number; y: number } {
   return {
-    x: Math.cos(angle - Math.PI / 2) * radius,
-    y: Math.sin(angle - Math.PI / 2) * radius,
+    x: Math.cos(angle + Math.PI / 2) * radius,
+    y: Math.sin(angle + Math.PI / 2) * radius,
   };
 }
 
@@ -1318,14 +1347,12 @@ function createWedgeLabel(
   const isOuterRing = maxDepth <= 1 || outerDepth >= maxDepth;
   const angleSpan = node.endAngle - node.startAngle;
   const ringThickness = outerRadius - innerRadius;
-  const radius = isOuterRing
-    ? outerRadius + fontSizePx * 0.75 + 2
-    : innerRadius + ringThickness * 0.56;
+  const radius = innerRadius + ringThickness * (isOuterRing ? 0.6 : 0.56);
   const tangentialSpan = radius * angleSpan;
 
-  const minAngleSpan = isOuterRing ? 0.012 : 0.055;
-  const minRingThickness = isOuterRing ? 8 : 14;
-  const minTangentialSpan = isOuterRing ? 4 : 18;
+  const minAngleSpan = isOuterRing ? 0.007 : 0.04;
+  const minRingThickness = isOuterRing ? 6 : 10;
+  const minTangentialSpan = isOuterRing ? 2 : 10;
 
   if (
     angleSpan < minAngleSpan ||
@@ -1340,10 +1367,10 @@ function createWedgeLabel(
 
   const approximateCharWidth = Math.max(4, fontSizePx * 0.58);
   const availableTextLength = isOuterRing
-    ? Math.max(0, outerRadius + fontSizePx * 10)
+    ? Math.max(0, ringThickness - fontSizePx * 0.45)
     : Math.max(0, tangentialSpan - fontSizePx * 0.35);
   const maxChars = Math.max(
-    isOuterRing ? 5 : 6,
+    isOuterRing ? 4 : 6,
     Math.floor(availableTextLength / approximateCharWidth),
   );
   const isTruncated = node.name.length > maxChars;
@@ -1487,6 +1514,25 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
   return colors;
 }
 
+export function resolveNodeFillColor(
+  colors: Map<string, string>,
+  candidatePaths: string[][],
+  fallbackColor = KRONA_UNCLASSIFIED_COLOR,
+): string {
+  for (const candidate of candidatePaths) {
+    if (!candidate || candidate.length === 0) {
+      continue;
+    }
+    for (let length = candidate.length; length >= 1; length -= 1) {
+      const color = colors.get(pathKey(candidate.slice(0, length)));
+      if (typeof color === "string" && color.length > 0) {
+        return color;
+      }
+    }
+  }
+  return fallbackColor;
+}
+
 function resolveNearestExistingAncestorPath(
   path: string[],
   existingPathKeys: Set<string>,
@@ -1618,6 +1664,11 @@ function computeLayoutDataMaxDepth(layout: ChartLayoutResult | null): number {
     return maxDepth;
   }
   return layout.nodes.reduce((max, node) => Math.max(max, node.depth), 0);
+}
+
+function isUnassignedAttributeKey(key: string): boolean {
+  const normalized = normalizeAttributeKey(key);
+  return /\bunassigned\b/.test(normalized);
 }
 
 function isUnassignedMembersKey(key: string): boolean {

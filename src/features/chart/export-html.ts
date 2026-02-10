@@ -585,7 +585,8 @@ const STANDALONE_SCRIPT = `
 
   function render() {
     var layout = computeLayout(dataset.tree, state.focusPath, state.depthLimit);
-    var kronaColors = buildKronaColorMap(layout);
+    var colorLayout = computeLayout(dataset.tree, null, 0);
+    var kronaColors = buildKronaColorMap(colorLayout);
 
     var resolvedFocusPath = state.focusPath && state.focusPath.length > 0 ? state.focusPath : rootPath;
     var activePath = state.hoverPath || state.selectedPath || resolvedFocusPath;
@@ -724,7 +725,13 @@ const STANDALONE_SCRIPT = `
       var isInteractive = interactionPath.length > 0 && !isUnclassifiedNodeName(node.name);
       var isActive = isInteractive && activePath ? pathEquals(interactionPath, activePath) : false;
       var isFocused = isInteractive && resolvedFocusPath ? pathEquals(interactionPath, resolvedFocusPath) : false;
-      var fill = kronaColors.get(pathKey(renderNode.colorPath || node.path)) || KRONA_UNCLASSIFIED_COLOR;
+      var fill = isUnclassifiedNodeName(node.name)
+        ? KRONA_UNCLASSIFIED_COLOR
+        : resolveNodeFillColor(
+            kronaColors,
+            [renderNode.colorPath || node.path, interactionPath, node.path],
+            KRONA_UNCLASSIFIED_COLOR
+          );
 
       var pathElement = createSvgElement("path");
       pathElement.setAttribute("class", "chart-wedge" + (isActive ? " is-active" : "") + (isFocused ? " is-focus" : ""));
@@ -1182,7 +1189,7 @@ const STANDALONE_SCRIPT = `
 
       var dot = document.createElement("span");
       dot.className = "legend-dot";
-      dot.style.background = kronaColors.get(pathKey(node.path)) || KRONA_UNCLASSIFIED_COLOR;
+      dot.style.background = resolveNodeFillColor(kronaColors, [node.path], KRONA_UNCLASSIFIED_COLOR);
       keyButton.appendChild(dot);
 
       var label = document.createElement("span");
@@ -1603,8 +1610,8 @@ const STANDALONE_SCRIPT = `
 
   function polarPoint(radius, angle) {
     return {
-      x: Math.cos(angle - Math.PI / 2) * radius,
-      y: Math.sin(angle - Math.PI / 2) * radius,
+      x: Math.cos(angle + Math.PI / 2) * radius,
+      y: Math.sin(angle + Math.PI / 2) * radius,
     };
   }
 
@@ -1654,12 +1661,12 @@ const STANDALONE_SCRIPT = `
     var isOuterRing = maxDepth <= 1 || outerDepth >= maxDepth;
     var angleSpan = node.endAngle - node.startAngle;
     var ringThickness = outerRadius - innerRadius;
-    var radius = isOuterRing ? outerRadius + fontSizePx * 0.75 + 2 : innerRadius + ringThickness * 0.56;
+    var radius = innerRadius + ringThickness * (isOuterRing ? 0.6 : 0.56);
     var tangentialSpan = radius * angleSpan;
 
-    var minAngleSpan = isOuterRing ? 0.012 : 0.055;
-    var minRingThickness = isOuterRing ? 8 : 14;
-    var minTangentialSpan = isOuterRing ? 4 : 18;
+    var minAngleSpan = isOuterRing ? 0.007 : 0.04;
+    var minRingThickness = isOuterRing ? 6 : 10;
+    var minTangentialSpan = isOuterRing ? 2 : 10;
 
     if (
       angleSpan < minAngleSpan ||
@@ -1674,9 +1681,9 @@ const STANDALONE_SCRIPT = `
 
     var approximateCharWidth = Math.max(4, fontSizePx * 0.58);
     var availableTextLength = isOuterRing
-      ? Math.max(0, outerRadius + fontSizePx * 10)
+      ? Math.max(0, ringThickness - fontSizePx * 0.45)
       : Math.max(0, tangentialSpan - fontSizePx * 0.35);
-    var maxChars = Math.max(isOuterRing ? 5 : 6, Math.floor(availableTextLength / approximateCharWidth));
+    var maxChars = Math.max(isOuterRing ? 4 : 6, Math.floor(availableTextLength / approximateCharWidth));
     var isTruncated = node.name.length > maxChars;
     var text = ellipsize(node.name, maxChars);
     var baseRotation = isOuterRing ? (midAngle * 180) / Math.PI - 90 : (midAngle * 180) / Math.PI;
@@ -1823,6 +1830,22 @@ const STANDALONE_SCRIPT = `
 
     assignColor(root, 0, 1);
     return colors;
+  }
+
+  function resolveNodeFillColor(colors, candidatePaths, fallbackColor) {
+    for (var index = 0; index < candidatePaths.length; index += 1) {
+      var candidate = candidatePaths[index];
+      if (!Array.isArray(candidate) || candidate.length === 0) {
+        continue;
+      }
+      for (var length = candidate.length; length >= 1; length -= 1) {
+        var color = colors.get(pathKey(candidate.slice(0, length)));
+        if (typeof color === "string" && color.length > 0) {
+          return color;
+        }
+      }
+    }
+    return fallbackColor;
   }
 
   function resolveNearestExistingAncestorPath(path, existingPathKeys) {
