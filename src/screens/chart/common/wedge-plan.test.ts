@@ -3,7 +3,7 @@ import type { ChartLayoutResult } from "../../../features/chart";
 import { createWedgeRenderPlan } from "./wedge-plan";
 
 describe("createWedgeRenderPlan", () => {
-  it("extends terminal wedges to the configured outer depth", () => {
+  it("renders wedges to the configured outer depth while preserving label depth", () => {
     const layout: ChartLayoutResult = {
       totalMagnitude: 100,
       nodes: [
@@ -45,9 +45,13 @@ describe("createWedgeRenderPlan", () => {
     const plan = createWedgeRenderPlan(layout, 4, 12);
     const byPath = new Map(plan.visibleNodes.map((entry) => [entry.node.path.join("/"), entry]));
 
-    expect(byPath.get("Root/A")?.outerDepth).toBe(4);
-    expect(byPath.get("Root/B")?.outerDepth).toBe(1);
-    expect(byPath.get("Root/B/B1")?.outerDepth).toBe(4);
+    expect(byPath.get("Root/A")?.renderOuterDepth).toBe(4);
+    expect(byPath.get("Root/B")?.renderOuterDepth).toBe(4);
+    expect(byPath.get("Root/B/B1")?.renderOuterDepth).toBe(4);
+
+    expect(byPath.get("Root/A")?.labelOuterDepth).toBe(4);
+    expect(byPath.get("Root/B")?.labelOuterDepth).toBe(1);
+    expect(byPath.get("Root/B/B1")?.labelOuterDepth).toBe(4);
   });
 
   it("uses parent interaction path and parent color path for grouped hidden wedges", () => {

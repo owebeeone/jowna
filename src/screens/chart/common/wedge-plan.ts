@@ -14,7 +14,8 @@ export interface WedgeRenderNode {
   key: string;
   colorPath: string[];
   interactionPath: string[];
-  outerDepth: number;
+  renderOuterDepth: number;
+  labelOuterDepth: number;
 }
 
 export function createWedgeRenderPlan(
@@ -38,13 +39,14 @@ export function createWedgeRenderPlan(
         key: pathKey(node.path),
         colorPath: node.path,
         interactionPath: node.path,
-        outerDepth: node.depth,
+        renderOuterDepth: node.depth,
+        labelOuterDepth: node.depth,
       })),
     };
   }
 
   const minVisibleWidth = Math.max(MIN_LABEL_FONT_SIZE, labelFontSize) * 2.3;
-  const radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
+  const radiusScale = createRadiusScale(maxDepth + 1, OUTER_RADIUS);
   const childrenByParent = new Map<string, ChartLayoutNode[]>();
   const visiblePathKeys = new Set(visibleNodes.map((node) => pathKey(node.path)));
 
@@ -82,7 +84,8 @@ export function createWedgeRenderPlan(
           key: pathKey(child.path),
           colorPath: child.path,
           interactionPath: child.path,
-          outerDepth: child.depth,
+          renderOuterDepth: child.depth,
+          labelOuterDepth: child.depth,
         });
         index += 1;
         continue;
@@ -119,7 +122,8 @@ export function createWedgeRenderPlan(
         key: `${parentKey}/[${hiddenCount}-more-${hiddenGroupIndex}]`,
         colorPath: groupedColorPath,
         interactionPath,
-        outerDepth: first.depth,
+        renderOuterDepth: first.depth,
+        labelOuterDepth: first.depth,
       });
 
       hiddenGroupIndex += 1;
@@ -144,7 +148,10 @@ export function createWedgeRenderPlan(
   return {
     visibleNodes: sortedNodes.map((entry) => ({
       ...entry,
-      outerDepth: parentKeys.has(pathKey(entry.node.path)) ? entry.node.depth : maxDepth,
+      // Krona draws wedges to the outer edge and overlays descendants on top.
+      renderOuterDepth: maxDepth,
+      // Labels keep ring-relative behavior from the previous plan.
+      labelOuterDepth: parentKeys.has(pathKey(entry.node.path)) ? entry.node.depth : maxDepth,
     })),
   };
 }
@@ -154,8 +161,8 @@ function shouldGroupHiddenChild(
   radiusScale: (depth: number) => number,
   minVisibleWidth: number,
 ): boolean {
-  const innerRadius = radiusScale(child.depth - 1);
-  const outerRadius = radiusScale(child.depth);
+  const innerRadius = radiusScale(child.depth);
+  const outerRadius = radiusScale(child.depth + 1);
   const angleSpan = Math.max(0, child.endAngle - child.startAngle);
   const widthEstimate = angleSpan * (innerRadius + outerRadius);
   return widthEstimate < minVisibleWidth;

@@ -38,11 +38,16 @@ describe("ChartScreen grouped hidden color", () => {
     const colors = buildKronaColorMap(layout);
 
     const grouped = plan.visibleNodes.filter((entry) => entry.isGroupedHidden);
-    const greyGrouped = grouped.filter(
-      (entry) =>
+    const greyGrouped = grouped.filter((entry) => {
+      const colorPathLeaf = entry.colorPath[entry.colorPath.length - 1]?.trim().toLowerCase() ?? "";
+      if (colorPathLeaf.startsWith("[other ")) {
+        return false;
+      }
+      return (
         (colors.get(entry.colorPath.join("/")) ?? KRONA_UNCLASSIFIED_COLOR) ===
-        KRONA_UNCLASSIFIED_COLOR,
-    );
+        KRONA_UNCLASSIFIED_COLOR
+      );
+    });
     const greyClassifiedNodes = layout.nodes.filter((node) => {
       if (node.depth <= 0 || node.name.trim().toLowerCase().startsWith("[other ")) {
         return false;

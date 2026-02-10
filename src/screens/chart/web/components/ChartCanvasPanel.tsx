@@ -59,8 +59,8 @@ export function ChartCanvasPanel() {
               {model.wedgeRenderPlan.visibleNodes.map((entry) => {
                 const node = entry.node;
                 const interactionPath = entry.interactionPath;
-                const innerRadius = model.radiusScale(node.depth - 1);
-                const outerRadius = model.radiusScale(entry.outerDepth);
+                const innerRadius = model.radiusScale(node.depth);
+                const outerRadius = model.radiusScale(entry.renderOuterDepth + 1);
                 const pathData = arcPath(innerRadius, outerRadius, node.startAngle, node.endAngle);
                 if (!pathData) {
                   return null;
@@ -147,14 +147,14 @@ export function ChartCanvasPanel() {
               {model.wedgeRenderPlan.visibleNodes.map((entry) => {
                 const node = entry.node;
                 const interactionPath = entry.interactionPath;
-                const innerRadius = model.radiusScale(node.depth - 1);
-                const outerRadius = model.radiusScale(entry.outerDepth);
+                const innerRadius = model.radiusScale(node.depth);
+                const outerRadius = model.radiusScale(entry.labelOuterDepth + 1);
                 const label = createWedgeLabel(
                   node,
                   innerRadius,
                   outerRadius,
                   model.maxDepth,
-                  entry.outerDepth,
+                  entry.labelOuterDepth,
                   model.labelFontSize,
                 );
                 if (!label) {
@@ -220,7 +220,7 @@ export function ChartCanvasPanel() {
               })}
 
               <circle
-                r={model.radiusScale(0) + 42}
+                r={model.centerDiscRadius}
                 className="chart-center-disc"
                 onClick={() =>
                   model.parentFocusPath
