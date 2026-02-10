@@ -600,6 +600,7 @@ const STANDALONE_SCRIPT = `
     var renderDepth = resolveRenderDepth(layoutDataMaxDepth, state.depthLimit);
     var maxDepth = renderDepth;
     var radiusScale = createRadiusScale(renderDepth, OUTER_RADIUS);
+    var centerDiscRadius = maxDepth > 0 ? Math.max(8, Math.min(42, radiusScale(1) * 0.78)) : 42;
     var wedgeRenderPlan = createWedgeRenderPlan(
       layout,
       renderDepth,
@@ -619,6 +620,7 @@ const STANDALONE_SCRIPT = `
       activeMagnitude,
       activeShare,
       radiusScale,
+      centerDiscRadius,
       maxDepth,
       parentFocusPath,
       wedgeRenderPlan
@@ -699,6 +701,7 @@ const STANDALONE_SCRIPT = `
     activeMagnitude,
     activeShare,
     radiusScale,
+    centerDiscRadius,
     maxDepth,
     parentFocusPath,
     wedgeRenderPlan
@@ -715,8 +718,8 @@ const STANDALONE_SCRIPT = `
         continue;
       }
 
-      var innerRadius = radiusScale(node.depth - 1);
-      var outerRadius = radiusScale(renderNode.outerDepth);
+      var innerRadius = radiusScale(Math.max(0, node.depth - 1));
+      var outerRadius = radiusScale(renderNode.renderOuterDepth);
       var pathData = arcPath(innerRadius, outerRadius, node.startAngle, node.endAngle);
       if (!pathData) {
         continue;
@@ -781,14 +784,14 @@ const STANDALONE_SCRIPT = `
       if (labelNode.depth <= 0) {
         continue;
       }
-      var labelInnerRadius = radiusScale(labelNode.depth - 1);
-      var labelOuterRadius = radiusScale(labelRenderNode.outerDepth);
+      var labelInnerRadius = radiusScale(Math.max(0, labelNode.depth - 1));
+      var labelOuterRadius = radiusScale(labelRenderNode.labelOuterDepth);
       var label = createWedgeLabel(
         labelNode,
         labelInnerRadius,
         labelOuterRadius,
         maxDepth,
-        labelRenderNode.outerDepth,
+        labelRenderNode.labelOuterDepth,
         Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx)
       );
       if (!label) {
@@ -852,7 +855,7 @@ const STANDALONE_SCRIPT = `
     }
 
     var centerDisc = createSvgElement("circle");
-    centerDisc.setAttribute("r", String(radiusScale(0) + 42));
+    centerDisc.setAttribute("r", String(centerDiscRadius));
     centerDisc.setAttribute("class", "chart-center-disc");
     centerDisc.addEventListener("click", function () {
       if (parentFocusPath) {
@@ -954,7 +957,8 @@ const STANDALONE_SCRIPT = `
             key: pathKey(node.path),
             colorPath: node.path,
             interactionPath: node.path,
-            outerDepth: node.depth,
+            renderOuterDepth: node.depth,
+            labelOuterDepth: node.depth,
           };
         }),
       };
@@ -1001,7 +1005,8 @@ const STANDALONE_SCRIPT = `
             key: pathKey(child.path),
             colorPath: child.path,
             interactionPath: child.path,
-            outerDepth: child.depth,
+            renderOuterDepth: child.depth,
+            labelOuterDepth: child.depth,
           });
           cursor += 1;
           continue;
@@ -1020,7 +1025,14 @@ const STANDALONE_SCRIPT = `
         var last = run[run.length - 1];
         var parentPath = first.path.slice(0, -1);
         var interactionPath = parentPath.length > 0 ? parentPath : first.path;
-        var groupedColorPath = resolveGroupedColorPath(parentPath, first.path, visiblePathKeys);
+        var primaryColorNode = run.find(function (node) {
+          return !isUnclassifiedNodeName(node.name);
+        }) || first;
+        var groupedColorPath = resolveGroupedColorPath(
+          parentPath,
+          primaryColorNode.path,
+          visiblePathKeys
+        );
         var hiddenCount = run.length;
         var groupedMagnitude = run.reduce(function (sum, item) {
           return sum + item.magnitude;
@@ -1040,7 +1052,8 @@ const STANDALONE_SCRIPT = `
           key: parentKey + "/[" + hiddenCount + "-more-" + hiddenGroupIndex + "]",
           colorPath: groupedColorPath,
           interactionPath: interactionPath,
-          outerDepth: first.depth,
+          renderOuterDepth: first.depth,
+          labelOuterDepth: first.depth,
         });
 
         hiddenGroupIndex += 1;
@@ -1066,6 +1079,8 @@ const STANDALONE_SCRIPT = `
     }));
     return {
       visibleNodes: groupedNodes.map(function (entry) {
+        var hasVisibleChildren = parentKeys.has(pathKey(entry.node.path));
+        var ringOuterDepth = Math.min(maxDepth, entry.node.depth);
         return {
           node: entry.node,
           isGroupedHidden: entry.isGroupedHidden,
@@ -1073,14 +1088,19 @@ const STANDALONE_SCRIPT = `
           key: entry.key,
           colorPath: entry.colorPath,
           interactionPath: entry.interactionPath,
-          outerDepth: parentKeys.has(pathKey(entry.node.path)) ? entry.node.depth : maxDepth,
+          renderOuterDepth: entry.isGroupedHidden
+            ? maxDepth
+            : hasVisibleChildren
+              ? ringOuterDepth
+              : maxDepth,
+          labelOuterDepth: hasVisibleChildren ? ringOuterDepth : maxDepth,
         };
       }),
     };
   }
 
   function shouldGroupHiddenChild(child, radiusScale, minVisibleWidth) {
-    var innerRadius = radiusScale(child.depth - 1);
+    var innerRadius = radiusScale(Math.max(0, child.depth - 1));
     var outerRadius = radiusScale(child.depth);
     var angleSpan = Math.max(0, child.endAngle - child.startAngle);
     var widthEstimate = angleSpan * (innerRadius + outerRadius);
