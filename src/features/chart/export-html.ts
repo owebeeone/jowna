@@ -25,7 +25,7 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
   </head>
   <body>
     <div class="app-shell">
-      <div class="app-frame">
+      <div class="app-frame chart-screen-frame">
         <header class="panel row space-between">
           <div>
             <h1 id="chart-title">Chart</h1>
@@ -45,6 +45,7 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
             <button id="btn-forward" class="ghost">Forward</button>
             <button id="btn-up" class="ghost">Up</button>
             <button id="btn-reset" class="ghost">Reset</button>
+            <button id="btn-toggle-details" class="ghost">Hide Details</button>
             <label class="row chart-collapse-wrap">
               <input id="collapse-input" type="checkbox" />
               <span>Collapse</span>
@@ -59,7 +60,7 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
 
         <div id="breadcrumbs" class="panel chart-breadcrumbs"></div>
 
-        <div class="chart-layout">
+        <div id="chart-layout" class="chart-layout">
           <section class="chart-surface chart-surface-krona">
             <svg id="chart-svg" class="chart-canvas chart-canvas-krona" viewBox="0 0 620 620" role="img">
               <g id="chart-root" transform="translate(310 310)"></g>
@@ -67,7 +68,7 @@ export function createStandaloneChartDocument(input: StandaloneChartDocumentInpu
             <div class="chart-hint muted">Click a segment to zoom. Hover to inspect. Click center to move up.</div>
           </section>
 
-          <aside class="panel stack chart-details">
+          <aside id="chart-details" class="panel stack chart-details">
             <h3 id="details-heading">Details</h3>
             <div id="details-content" class="stack"></div>
             <div class="stack">
@@ -137,6 +138,11 @@ body {
   padding: 24px;
   display: grid;
   gap: 16px;
+}
+
+.app-frame.chart-screen-frame {
+  max-width: none;
+  width: 100%;
 }
 
 .panel {
@@ -232,8 +238,13 @@ button:disabled {
 
 .chart-layout {
   display: grid;
-  grid-template-columns: minmax(500px, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
+  align-items: start;
+}
+
+.chart-layout.is-details-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .chart-surface {
@@ -241,7 +252,7 @@ button:disabled {
   border: 1px solid #d6dfda;
   border-radius: 12px;
   padding: 12px;
-  min-height: 620px;
+  min-height: 0;
 }
 
 .chart-surface-krona {
@@ -257,7 +268,12 @@ button:disabled {
 }
 
 .chart-canvas-krona {
-  height: 640px;
+  height: clamp(560px, calc(100vh - 270px), 1400px);
+  overflow: visible;
+}
+
+.chart-layout.is-details-hidden .chart-canvas-krona {
+  height: clamp(620px, calc(100vh - 230px), 1600px);
 }
 
 .chart-breadcrumbs {
@@ -308,6 +324,19 @@ button:disabled {
   font-weight: 600;
   pointer-events: none;
   text-rendering: geometricPrecision;
+}
+
+.chart-label-tooltip {
+  pointer-events: none;
+}
+
+.chart-label-tooltip-box {
+  fill: #ffffff;
+}
+
+.chart-label-tooltip-text {
+  fill: #102a1f;
+  font-weight: 600;
 }
 
 .chart-center-disc {
@@ -418,6 +447,10 @@ button:disabled {
     height: 500px;
   }
 
+  .chart-layout.is-details-hidden .chart-canvas-krona {
+    height: 540px;
+  }
+
   .chart-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -428,6 +461,7 @@ const STANDALONE_SCRIPT = `
 (function () {
   var OUTER_RADIUS = 270;
   var MAX_KEY_SEGMENTS = 10;
+  var MIN_LABEL_FONT_SIZE = 4;
   var KRONA_SATURATION = 0.5;
   var KRONA_LIGHTNESS_BASE = 0.6;
   var KRONA_LIGHTNESS_MAX = 0.8;
@@ -447,6 +481,7 @@ const STANDALONE_SCRIPT = `
     focusPath: rootPath.slice(),
     selectedPath: rootPath.slice(),
     hoverPath: null,
+    detailsPanelCollapsed: false,
     history: [rootPath.slice()],
     historyIndex: 0,
     depthLimit: normalizeDepthLimit(payload.depthLimit),
@@ -459,10 +494,13 @@ const STANDALONE_SCRIPT = `
     forwardButton: byId("btn-forward"),
     upButton: byId("btn-up"),
     resetButton: byId("btn-reset"),
+    toggleDetailsButton: byId("btn-toggle-details"),
     collapseInput: byId("collapse-input"),
     downloadSvgButton: byId("btn-download-svg"),
     depthInput: byId("depth-input"),
     breadcrumbs: byId("breadcrumbs"),
+    chartLayout: byId("chart-layout"),
+    chartDetails: byId("chart-details"),
     chartSurface: byClass("chart-surface"),
     chartSvg: byId("chart-svg"),
     chartRoot: byId("chart-root"),
@@ -478,6 +516,7 @@ const STANDALONE_SCRIPT = `
   elements.depthInput.value = String(state.depthLimit);
   elements.collapseInput.checked = chartSettings.collapseRedundant !== false;
   applyChartSettings();
+  applyDetailsPanelVisibility();
 
   bindControls();
   render();
@@ -524,6 +563,11 @@ const STANDALONE_SCRIPT = `
       render();
     });
 
+    elements.toggleDetailsButton.addEventListener("click", function () {
+      state.detailsPanelCollapsed = !state.detailsPanelCollapsed;
+      applyDetailsPanelVisibility();
+    });
+
     elements.downloadSvgButton.addEventListener("click", function () {
       downloadCurrentSvg();
     });
@@ -558,7 +602,7 @@ const STANDALONE_SCRIPT = `
     var wedgeRenderPlan = createWedgeRenderPlan(
       layout,
       renderDepth,
-      Math.max(8, chartSettings.fontSizePx),
+      Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx),
       radiusScale
     );
     var parentFocusPath = resolvedFocusPath.length > 1 ? resolvedFocusPath.slice(0, -1) : null;
@@ -594,10 +638,31 @@ const STANDALONE_SCRIPT = `
     if (elements.chartSvg) {
       if (typeof chartSettings.width === "number" && chartSettings.width > 0) {
         elements.chartSvg.style.width = String(chartSettings.width) + "px";
+      } else {
+        elements.chartSvg.style.width = "";
       }
       if (typeof chartSettings.height === "number" && chartSettings.height > 0) {
         elements.chartSvg.style.height = String(chartSettings.height) + "px";
+      } else {
+        elements.chartSvg.style.height = "";
       }
+      elements.chartSvg.style.overflow = "visible";
+    }
+  }
+
+  function applyDetailsPanelVisibility() {
+    if (!elements.chartLayout || !elements.chartDetails) {
+      return;
+    }
+
+    if (state.detailsPanelCollapsed) {
+      elements.chartLayout.classList.add("is-details-hidden");
+      elements.chartDetails.setAttribute("hidden", "hidden");
+      elements.toggleDetailsButton.textContent = "Show Details";
+    } else {
+      elements.chartLayout.classList.remove("is-details-hidden");
+      elements.chartDetails.removeAttribute("hidden");
+      elements.toggleDetailsButton.textContent = "Hide Details";
     }
   }
 
@@ -644,6 +709,7 @@ const STANDALONE_SCRIPT = `
     for (var index = 0; index < renderNodes.length; index += 1) {
       var renderNode = renderNodes[index];
       var node = renderNode.node;
+      var interactionPath = renderNode.interactionPath;
       if (node.depth <= 0) {
         continue;
       }
@@ -655,9 +721,9 @@ const STANDALONE_SCRIPT = `
         continue;
       }
 
-      var isInteractive = !renderNode.isGroupedHidden && !isUnclassifiedNodeName(node.name);
-      var isActive = isInteractive && activePath ? pathEquals(node.path, activePath) : false;
-      var isFocused = isInteractive && resolvedFocusPath ? pathEquals(node.path, resolvedFocusPath) : false;
+      var isInteractive = interactionPath.length > 0 && !isUnclassifiedNodeName(node.name);
+      var isActive = isInteractive && activePath ? pathEquals(interactionPath, activePath) : false;
+      var isFocused = isInteractive && resolvedFocusPath ? pathEquals(interactionPath, resolvedFocusPath) : false;
       var fill = kronaColors.get(pathKey(renderNode.colorPath || node.path)) || KRONA_UNCLASSIFIED_COLOR;
 
       var pathElement = createSvgElement("path");
@@ -677,10 +743,10 @@ const STANDALONE_SCRIPT = `
       if (isInteractive) {
         pathElement.setAttribute("role", "button");
         pathElement.setAttribute("tabindex", "0");
-        pathElement.addEventListener("mouseenter", createHoverHandler(node.path));
+        pathElement.addEventListener("mouseenter", createHoverHandler(interactionPath));
         pathElement.addEventListener("mouseleave", clearHoverHandler);
-        pathElement.addEventListener("click", createFocusHandler(node.path));
-        pathElement.addEventListener("pointerdown", createFocusHandler(node.path));
+        pathElement.addEventListener("click", createFocusHandler(interactionPath));
+        pathElement.addEventListener("pointerdown", createFocusHandler(interactionPath));
       }
 
       var title = createSvgElement("title");
@@ -704,6 +770,7 @@ const STANDALONE_SCRIPT = `
     for (var labelIndex = 0; labelIndex < renderNodes.length; labelIndex += 1) {
       var labelRenderNode = renderNodes[labelIndex];
       var labelNode = labelRenderNode.node;
+      var labelInteractionPath = labelRenderNode.interactionPath;
       if (labelNode.depth <= 0) {
         continue;
       }
@@ -714,10 +781,51 @@ const STANDALONE_SCRIPT = `
         labelInnerRadius,
         labelOuterRadius,
         maxDepth,
-        labelRenderNode.outerDepth
+        labelRenderNode.outerDepth,
+        Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx)
       );
       if (!label) {
         continue;
+      }
+
+      var showTooltip = !!state.hoverPath && pathEquals(labelInteractionPath, state.hoverPath) && label.isTruncated;
+      if (showTooltip) {
+        var tooltip = createHoverLabelTooltip(
+          label,
+          Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx)
+        );
+        var tooltipGroup = createSvgElement("g");
+        tooltipGroup.setAttribute("class", "chart-label-tooltip");
+        tooltipGroup.setAttribute("pointer-events", "none");
+
+        var tooltipBox = createSvgElement("rect");
+        tooltipBox.setAttribute("class", "chart-label-tooltip-box");
+        tooltipBox.setAttribute("x", String(tooltip.x));
+        tooltipBox.setAttribute("y", String(tooltip.y));
+        tooltipBox.setAttribute("width", String(tooltip.width));
+        tooltipBox.setAttribute("height", String(tooltip.height));
+        tooltipBox.setAttribute("rx", "7");
+        tooltipBox.setAttribute("ry", "7");
+        tooltipBox.setAttribute("fill", "#ffffff");
+        tooltipBox.setAttribute("stroke", chartSettings.wedgeStrokeColor);
+        tooltipBox.setAttribute("stroke-width", String(Math.max(0.4, chartSettings.wedgeStrokeWidth) + 0.5));
+        tooltipGroup.appendChild(tooltipBox);
+
+        var tooltipText = createSvgElement("text");
+        tooltipText.setAttribute("class", "chart-label-tooltip-text");
+        tooltipText.setAttribute("x", String(tooltip.textX));
+        tooltipText.setAttribute("y", String(tooltip.textY));
+        tooltipText.setAttribute("text-anchor", "middle");
+        tooltipText.setAttribute("dominant-baseline", "middle");
+        tooltipText.setAttribute("font-family", chartSettings.fontFamily);
+        tooltipText.setAttribute(
+          "font-size",
+          String(Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx))
+        );
+        tooltipText.textContent = label.fullText;
+        tooltipGroup.appendChild(tooltipText);
+
+        elements.chartRoot.appendChild(tooltipGroup);
       }
 
       var text = createSvgElement("text");
@@ -728,7 +836,10 @@ const STANDALONE_SCRIPT = `
       text.setAttribute("dominant-baseline", "middle");
       text.setAttribute("transform", "rotate(" + label.rotate + " " + label.x + " " + label.y + ")");
       text.setAttribute("font-family", chartSettings.fontFamily);
-      text.setAttribute("font-size", String(Math.max(8, chartSettings.fontSizePx)));
+      text.setAttribute(
+        "font-size",
+        String(Math.max(MIN_LABEL_FONT_SIZE, chartSettings.fontSizePx))
+      );
       text.textContent = label.text;
       elements.chartRoot.appendChild(text);
     }
@@ -835,14 +946,20 @@ const STANDALONE_SCRIPT = `
             hiddenCount: 0,
             key: pathKey(node.path),
             colorPath: node.path,
+            interactionPath: node.path,
             outerDepth: node.depth,
           };
         }),
       };
     }
 
-    var minVisibleWidth = Math.max(8, labelFontSize) * 2.3;
+    var minVisibleWidth = Math.max(MIN_LABEL_FONT_SIZE, labelFontSize) * 2.3;
     var childrenByParent = new Map();
+    var visiblePathKeys = new Set(
+      visibleNodes.map(function (node) {
+        return pathKey(node.path);
+      })
+    );
     for (var index = 0; index < visibleNodes.length; index += 1) {
       var current = visibleNodes[index];
       var parent = pathKey(current.path.slice(0, -1));
@@ -876,6 +993,7 @@ const STANDALONE_SCRIPT = `
             hiddenCount: 0,
             key: pathKey(child.path),
             colorPath: child.path,
+            interactionPath: child.path,
             outerDepth: child.depth,
           });
           cursor += 1;
@@ -893,6 +1011,9 @@ const STANDALONE_SCRIPT = `
         var run = children.slice(cursor, runEnd + 1);
         var first = run[0];
         var last = run[run.length - 1];
+        var parentPath = first.path.slice(0, -1);
+        var interactionPath = parentPath.length > 0 ? parentPath : first.path;
+        var groupedColorPath = resolveGroupedColorPath(parentPath, first.path, visiblePathKeys);
         var hiddenCount = run.length;
         var groupedMagnitude = run.reduce(function (sum, item) {
           return sum + item.magnitude;
@@ -910,7 +1031,8 @@ const STANDALONE_SCRIPT = `
           isGroupedHidden: true,
           hiddenCount: hiddenCount,
           key: parentKey + "/[" + hiddenCount + "-more-" + hiddenGroupIndex + "]",
-          colorPath: first.path,
+          colorPath: groupedColorPath,
+          interactionPath: interactionPath,
           outerDepth: first.depth,
         });
 
@@ -943,6 +1065,7 @@ const STANDALONE_SCRIPT = `
           hiddenCount: entry.hiddenCount,
           key: entry.key,
           colorPath: entry.colorPath,
+          interactionPath: entry.interactionPath,
           outerDepth: parentKeys.has(pathKey(entry.node.path)) ? entry.node.depth : maxDepth,
         };
       }),
@@ -955,6 +1078,16 @@ const STANDALONE_SCRIPT = `
     var angleSpan = Math.max(0, child.endAngle - child.startAngle);
     var widthEstimate = angleSpan * (innerRadius + outerRadius);
     return widthEstimate < minVisibleWidth;
+  }
+
+  function resolveGroupedColorPath(parentPath, fallbackPath, visiblePathKeys) {
+    for (var length = parentPath.length; length >= 2; length -= 1) {
+      var candidate = parentPath.slice(0, length);
+      if (visiblePathKeys.has(pathKey(candidate))) {
+        return candidate;
+      }
+    }
+    return fallbackPath;
   }
 
   function renderDetails(activeNode, activePath, activeMagnitude, activeShare) {
@@ -1517,16 +1650,16 @@ const STANDALONE_SCRIPT = `
     return Math.min(depthLimit, treeMaxDepth);
   }
 
-  function createWedgeLabel(node, innerRadius, outerRadius, maxDepth, outerDepth) {
+  function createWedgeLabel(node, innerRadius, outerRadius, maxDepth, outerDepth, fontSizePx) {
     var isOuterRing = maxDepth <= 1 || outerDepth >= maxDepth;
     var angleSpan = node.endAngle - node.startAngle;
     var ringThickness = outerRadius - innerRadius;
-    var radius = innerRadius + ringThickness * 0.56;
+    var radius = isOuterRing ? outerRadius + fontSizePx * 0.75 + 2 : innerRadius + ringThickness * 0.56;
     var tangentialSpan = radius * angleSpan;
 
-    var minAngleSpan = isOuterRing ? 0.018 : 0.055;
-    var minRingThickness = isOuterRing ? 10 : 14;
-    var minTangentialSpan = isOuterRing ? 6 : 18;
+    var minAngleSpan = isOuterRing ? 0.012 : 0.055;
+    var minRingThickness = isOuterRing ? 8 : 14;
+    var minTangentialSpan = isOuterRing ? 4 : 18;
 
     if (
       angleSpan < minAngleSpan ||
@@ -1539,10 +1672,12 @@ const STANDALONE_SCRIPT = `
     var midAngle = (node.startAngle + node.endAngle) / 2;
     var point = polarPoint(radius, midAngle);
 
+    var approximateCharWidth = Math.max(4, fontSizePx * 0.58);
     var availableTextLength = isOuterRing
-      ? Math.max(0, ringThickness - 6)
-      : Math.max(0, tangentialSpan - 4);
-    var maxChars = Math.max(isOuterRing ? 3 : 6, Math.floor(availableTextLength / 6.8));
+      ? Math.max(0, outerRadius + fontSizePx * 10)
+      : Math.max(0, tangentialSpan - fontSizePx * 0.35);
+    var maxChars = Math.max(isOuterRing ? 5 : 6, Math.floor(availableTextLength / approximateCharWidth));
+    var isTruncated = node.name.length > maxChars;
     var text = ellipsize(node.name, maxChars);
     var baseRotation = isOuterRing ? (midAngle * 180) / Math.PI - 90 : (midAngle * 180) / Math.PI;
     var normalizedRotation = normalizeDegrees(baseRotation);
@@ -1551,10 +1686,31 @@ const STANDALONE_SCRIPT = `
 
     return {
       text: text,
+      fullText: node.name,
+      isTruncated: isTruncated,
       x: point.x,
       y: point.y,
       rotate: rotate,
       anchor: isOuterRing ? (flip ? "end" : "start") : "middle",
+    };
+  }
+
+  function createHoverLabelTooltip(label, fontSizePx) {
+    var horizontalPadding = 9;
+    var verticalPadding = 5;
+    var approxTextWidth = Math.max(20, label.fullText.length * fontSizePx * 0.58);
+    var width = approxTextWidth + horizontalPadding * 2;
+    var height = fontSizePx + verticalPadding * 2 + 2;
+    var centerX = label.x;
+    var centerY = label.y - fontSizePx * 1.2;
+
+    return {
+      x: centerX - width / 2,
+      y: centerY - height / 2,
+      width: width,
+      height: height,
+      textX: centerX,
+      textY: centerY,
     };
   }
 
@@ -1574,6 +1730,11 @@ const STANDALONE_SCRIPT = `
     var root = layout.nodes.find(function (node) {
       return node.depth === 0;
     }) || layout.nodes[0];
+    var existingPathKeys = new Set(
+      layout.nodes.map(function (node) {
+        return pathKey(node.path);
+      })
+    );
     var childrenByParent = new Map();
     for (var index = 0; index < layout.nodes.length; index += 1) {
       var node = layout.nodes[index];
@@ -1584,7 +1745,9 @@ const STANDALONE_SCRIPT = `
       if (node.depth === 0) {
         continue;
       }
-      var parent = pathKey(node.path.slice(0, -1));
+      var parent = pathKey(
+        resolveNearestExistingAncestorPath(node.path.slice(0, -1), existingPathKeys)
+      );
       var children = childrenByParent.get(parent);
       if (children) {
         children.push(node);
@@ -1660,6 +1823,16 @@ const STANDALONE_SCRIPT = `
 
     assignColor(root, 0, 1);
     return colors;
+  }
+
+  function resolveNearestExistingAncestorPath(path, existingPathKeys) {
+    for (var length = path.length; length >= 0; length -= 1) {
+      var candidate = path.slice(0, length);
+      if (existingPathKeys.has(pathKey(candidate))) {
+        return candidate;
+      }
+    }
+    return [];
   }
 
   function lerp(value, rangeStart, rangeEnd, outputStart, outputEnd) {
@@ -1803,7 +1976,7 @@ const STANDALONE_SCRIPT = `
       fontFamily: typeof raw.fontFamily === "string" ? raw.fontFamily : defaults.fontFamily,
       fontSizePx:
         typeof raw.fontSizePx === "number" && Number.isFinite(raw.fontSizePx)
-          ? Math.max(8, raw.fontSizePx)
+          ? Math.max(MIN_LABEL_FONT_SIZE, raw.fontSizePx)
           : defaults.fontSizePx,
       width: normalizedWidth,
       height: normalizedHeight,
@@ -1911,6 +2084,9 @@ const STANDALONE_SCRIPT = `
     var style = createSvgElement("style");
     style.textContent =
       ".chart-wedge-label{fill:#0e2b1f;font-weight:600}" +
+      ".chart-label-tooltip{pointer-events:none}" +
+      ".chart-label-tooltip-box{fill:#ffffff}" +
+      ".chart-label-tooltip-text{fill:#102a1f;font-weight:600}" +
       ".chart-center-disc{fill:#f4faf7;stroke:#c4d8cc;stroke-width:1.4}" +
       ".chart-center-title{font-size:13px;font-weight:700;fill:#102a1f}" +
       ".chart-center-metric{font-size:15px;font-weight:700;fill:#174936}" +

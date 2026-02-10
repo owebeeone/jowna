@@ -12,6 +12,11 @@
   gap: 16px;
 }
 
+.app-frame.chart-screen-frame {
+  max-width: none;
+  width: 100%;
+}
+
 .panel-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -361,8 +366,13 @@ button:disabled {
 
 .chart-layout {
   display: grid;
-  grid-template-columns: minmax(500px, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
+  align-items: start;
+}
+
+.chart-layout.is-details-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .chart-surface {
@@ -370,7 +380,7 @@ button:disabled {
   border: 1px solid #d6dfda;
   border-radius: 12px;
   padding: 12px;
-  min-height: 620px;
+  min-height: 0;
 }
 
 .chart-canvas {
@@ -418,14 +428,17 @@ button:disabled {
 }
 
 .chart-surface-krona {
-  background:
-    radial-gradient(circle at 50% 40%, #f9fdfb 0%, #f4faf7 38%, #ebf3ee 100%),
-    #ffffff;
+  background: radial-gradient(circle at 50% 40%, #f9fdfb 0%, #f4faf7 38%, #ebf3ee 100%), #ffffff;
 }
 
 .chart-canvas-krona {
-  height: 640px;
+  height: clamp(560px, calc(100vh - 270px), 1400px);
+  overflow: visible;
   animation: chart-fade-in 220ms ease-out;
+}
+
+.chart-layout.is-details-hidden .chart-canvas-krona {
+  height: clamp(620px, calc(100vh - 230px), 1600px);
 }
 
 .chart-wedge {
@@ -454,6 +467,19 @@ button:disabled {
   font-weight: 600;
   pointer-events: none;
   text-rendering: geometricPrecision;
+}
+
+.chart-label-tooltip {
+  pointer-events: none;
+}
+
+.chart-label-tooltip-box {
+  fill: #ffffff;
+}
+
+.chart-label-tooltip-text {
+  fill: #102a1f;
+  font-weight: 600;
 }
 
 .chart-center-disc {
@@ -674,6 +700,10 @@ button:disabled {
 
   .chart-canvas-krona {
     height: 500px;
+  }
+
+  .chart-layout.is-details-hidden .chart-canvas-krona {
+    height: 540px;
   }
 
   .chart-stats {

@@ -49,6 +49,99 @@ describe("ChartScreen wedge render plan", () => {
     expect(byPath.get("Root/B")?.outerDepth).toBe(1);
     expect(byPath.get("Root/B/B1")?.outerDepth).toBe(4);
   });
+
+  it("uses parent interaction path and parent color path for grouped hidden wedges", () => {
+    const layout: ChartLayoutResult = {
+      totalMagnitude: 100,
+      nodes: [
+        {
+          path: ["Root"],
+          name: "Root",
+          depth: 0,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "Alpha"],
+          name: "Alpha",
+          depth: 1,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "Alpha", "Tiny-1"],
+          name: "Tiny-1",
+          depth: 2,
+          magnitude: 1,
+          startAngle: 0,
+          endAngle: 0.01,
+        },
+        {
+          path: ["Root", "Alpha", "Tiny-2"],
+          name: "Tiny-2",
+          depth: 2,
+          magnitude: 1,
+          startAngle: 0.01,
+          endAngle: 0.02,
+        },
+      ],
+    };
+
+    const plan = createWedgeRenderPlan(layout, 2, 24);
+    const grouped = plan.visibleNodes.find((entry) => entry.isGroupedHidden);
+
+    expect(grouped).toBeTruthy();
+    expect(grouped?.interactionPath).toEqual(["Root", "Alpha"]);
+    expect(grouped?.colorPath).toEqual(["Root", "Alpha"]);
+  });
+
+  it("falls back to child color path for top-level grouped hidden wedges", () => {
+    const layout: ChartLayoutResult = {
+      totalMagnitude: 100,
+      nodes: [
+        {
+          path: ["Root"],
+          name: "Root",
+          depth: 0,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "Tiny-1"],
+          name: "Tiny-1",
+          depth: 1,
+          magnitude: 1,
+          startAngle: 0,
+          endAngle: 0.01,
+        },
+        {
+          path: ["Root", "Tiny-2"],
+          name: "Tiny-2",
+          depth: 1,
+          magnitude: 1,
+          startAngle: 0.01,
+          endAngle: 0.02,
+        },
+        {
+          path: ["Root", "Large"],
+          name: "Large",
+          depth: 1,
+          magnitude: 98,
+          startAngle: 0.02,
+          endAngle: Math.PI * 2,
+        },
+      ],
+    };
+
+    const plan = createWedgeRenderPlan(layout, 1, 24);
+    const grouped = plan.visibleNodes.find((entry) => entry.isGroupedHidden);
+
+    expect(grouped).toBeTruthy();
+    expect(grouped?.colorPath).toEqual(["Root", "Tiny-1"]);
+  });
 });
 
 describe("resolveRenderDepth", () => {
@@ -129,5 +222,82 @@ describe("buildKronaColorMap", () => {
     expect(withOtherColors.get("Root/A")).toBe(baseColors.get("Root/A"));
     expect(withOtherColors.get("Root/B")).toBe(baseColors.get("Root/B"));
     expect(withOtherColors.get("Root/[other Root]")).toBe("rgb(220,220,220)");
+  });
+
+  it("assigns colors to nodes even when collapsed paths skip intermediate ancestors", () => {
+    const layout: ChartLayoutResult = {
+      totalMagnitude: 100,
+      nodes: [
+        {
+          path: ["Root"],
+          name: "Root",
+          depth: 0,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "A"],
+          name: "A",
+          depth: 1,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "A", "Skipped", "Leaf"],
+          name: "Leaf",
+          depth: 2,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+      ],
+    };
+
+    const colors = buildKronaColorMap(layout);
+
+    expect(colors.get("Root/A")).toBeTruthy();
+    expect(colors.get("Root/A/Skipped/Leaf")).toBeTruthy();
+    expect(colors.get("Root/A/Skipped/Leaf")).not.toBe("rgb(220,220,220)");
+  });
+
+  it("matches Krona top-level hue wheel for > 6 siblings", () => {
+    const names = ["A", "B", "C", "D", "E", "F", "G"];
+    const nodes: ChartLayoutResult["nodes"] = [
+      {
+        path: ["Root"],
+        name: "Root",
+        depth: 0,
+        magnitude: 700,
+        startAngle: 0,
+        endAngle: Math.PI * 2,
+      },
+      ...names.map((name, index) => {
+        const start = (index / names.length) * Math.PI * 2;
+        const end = ((index + 1) / names.length) * Math.PI * 2;
+        return {
+          path: ["Root", name],
+          name,
+          depth: 1,
+          magnitude: 100,
+          startAngle: start,
+          endAngle: end,
+        };
+      }),
+    ];
+
+    const colors = buildKronaColorMap({
+      totalMagnitude: 700,
+      nodes,
+    });
+
+    expect(colors.get("Root/A")).toBe("rgb(204,101,101)");
+    expect(colors.get("Root/B")).toBe("rgb(193,204,101)");
+    expect(colors.get("Root/C")).toBe("rgb(101,204,116)");
+    expect(colors.get("Root/D")).toBe("rgb(101,194,204)");
+    expect(colors.get("Root/E")).toBe("rgb(101,106,204)");
+    expect(colors.get("Root/F")).toBe("rgb(174,101,204)");
+    expect(colors.get("Root/G")).toBe("rgb(204,101,170)");
   });
 });

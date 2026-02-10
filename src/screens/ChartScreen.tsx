@@ -1,5 +1,5 @@
 import { useGrip, useNumberGrip } from "@owebeeone/grip-react";
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { ChartSettings, TreeNode } from "../domain";
 import {
   createStandaloneChartDocument,
@@ -29,6 +29,7 @@ const KRONA_SATURATION = 0.5;
 const KRONA_LIGHTNESS_BASE = 0.6;
 const KRONA_LIGHTNESS_MAX = 0.8;
 const KRONA_UNCLASSIFIED_COLOR = "rgb(220,220,220)";
+const MIN_LABEL_FONT_SIZE = 4;
 const CHART_FONT_OPTIONS = [
   { label: "Krona (sans-serif)", value: "sans-serif" },
   { label: "Arial", value: "Arial" },
@@ -54,7 +55,13 @@ export function ChartScreen() {
   const chartSettingsTap = useGrip(CHART_SETTINGS_STATE_TAP);
   const depthLimit = useGrip(CHART_DEPTH_LIMIT) ?? 0;
   const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
+  const [detailsPanelCollapsed, setDetailsPanelCollapsed] = useState(false);
   const [openMembersPopoverForPath, setOpenMembersPopoverForPath] = useState<string | null>(null);
+  const [dimensionDrafts, setDimensionDrafts] = useState<{ width: string; height: string }>({
+    width: "",
+    height: "",
+  });
+  const [activeDimensionDraft, setActiveDimensionDraft] = useState<"width" | "height" | null>(null);
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
 
   const depthBind = useNumberGrip(CHART_DEPTH_LIMIT, CHART_DEPTH_LIMIT_TAP, {
@@ -77,10 +84,23 @@ export function ChartScreen() {
       typeof resolvedChartSettings.height === "number"
         ? `${Math.max(240, resolvedChartSettings.height)}px`
         : undefined,
+    overflow: "visible",
   };
-  const labelFontSize = Math.max(8, resolvedChartSettings.fontSizePx);
+  const labelFontSize = Math.max(MIN_LABEL_FONT_SIZE, resolvedChartSettings.fontSizePx);
   const widthMode = typeof resolvedChartSettings.width === "number" ? "custom" : "fit";
   const heightMode = typeof resolvedChartSettings.height === "number" ? "custom" : "fit";
+  const widthInputValue =
+    activeDimensionDraft === "width"
+      ? dimensionDrafts.width
+      : typeof resolvedChartSettings.width === "number"
+        ? String(resolvedChartSettings.width)
+        : "";
+  const heightInputValue =
+    activeDimensionDraft === "height"
+      ? dimensionDrafts.height
+      : typeof resolvedChartSettings.height === "number"
+        ? String(resolvedChartSettings.height)
+        : "";
   const chartFontOptions = useMemo(() => {
     const current = resolvedChartSettings.fontFamily;
     if (CHART_FONT_OPTIONS.some((option) => option.value === current)) {
@@ -172,6 +192,30 @@ export function ChartScreen() {
     setOpenMembersPopoverForPath(null);
   };
 
+  useEffect(() => {
+    if (activeDimensionDraft !== "width") {
+      const nextWidth =
+        typeof resolvedChartSettings.width === "number" ? String(resolvedChartSettings.width) : "";
+      setDimensionDrafts((current) =>
+        current.width === nextWidth ? current : { ...current, width: nextWidth },
+      );
+    }
+    if (activeDimensionDraft !== "height") {
+      const nextHeight =
+        typeof resolvedChartSettings.height === "number"
+          ? String(resolvedChartSettings.height)
+          : "";
+      setDimensionDrafts((current) =>
+        current.height === nextHeight ? current : { ...current, height: nextHeight },
+      );
+    }
+  }, [
+    activeDimensionDraft,
+    resolvedChartSettings.height,
+    resolvedChartSettings.width,
+    setDimensionDrafts,
+  ]);
+
   const persistChartSettings = (nextSettings: ChartSettings) => {
     const normalized: ChartSettings = {
       ...nextSettings,
@@ -198,32 +242,59 @@ export function ChartScreen() {
 
   const updateDimensionMode = (dimension: "width" | "height", mode: "fit" | "custom") => {
     if (mode === "fit") {
+      setActiveDimensionDraft((current) => (current === dimension ? null : current));
+      setDimensionDrafts((current) => ({ ...current, [dimension]: "" }));
       updateChartSettings({ [dimension]: "fit" } as Partial<ChartSettings>);
       return;
     }
 
     const currentDimension = resolvedChartSettings[dimension];
     const fallback = dimension === "width" ? 620 : 640;
+    const normalized =
+      typeof currentDimension === "number" && Number.isFinite(currentDimension)
+        ? Math.max(240, currentDimension)
+        : fallback;
+
+    setDimensionDrafts((current) => ({ ...current, [dimension]: String(normalized) }));
     updateChartSettings({
-      [dimension]:
-        typeof currentDimension === "number" && Number.isFinite(currentDimension)
-          ? Math.max(240, currentDimension)
-          : fallback,
+      [dimension]: normalized,
     } as Partial<ChartSettings>);
   };
 
   const onDimensionValueChange =
     (dimension: "width" | "height") => (event: ChangeEvent<HTMLInputElement>) => {
+      setDimensionDrafts((current) => ({ ...current, [dimension]: event.target.value }));
+    };
+
+  const onDimensionInputFocus = (dimension: "width" | "height") => () => {
+    setActiveDimensionDraft(dimension);
+  };
+
+  const onDimensionInputBlur =
+    (dimension: "width" | "height") => (event: ChangeEvent<HTMLInputElement>) => {
+      setActiveDimensionDraft((current) => (current === dimension ? null : current));
       const parsed = Number.parseInt(event.target.value, 10);
       if (!Number.isFinite(parsed)) {
+        const fallback =
+          typeof resolvedChartSettings[dimension] === "number"
+            ? String(resolvedChartSettings[dimension])
+            : "";
+        setDimensionDrafts((current) => ({ ...current, [dimension]: fallback }));
         return;
       }
-      updateChartSettings({ [dimension]: Math.max(240, parsed) } as Partial<ChartSettings>);
+      const normalized = Math.max(240, parsed);
+      setDimensionDrafts((current) => ({ ...current, [dimension]: String(normalized) }));
+      updateChartSettings({ [dimension]: normalized } as Partial<ChartSettings>);
     };
+
+  const onToggleDetailsPanel = () => {
+    setDetailsPanelCollapsed((current) => !current);
+    setOpenMembersPopoverForPath(null);
+  };
 
   return (
     <div className="app-shell">
-      <div className="app-frame">
+      <div className="app-frame chart-screen-frame">
         <header className="panel row" style={{ justifyContent: "space-between" }}>
           <div>
             <h1 style={{ marginBottom: 4 }}>Chart View</h1>
@@ -271,6 +342,9 @@ export function ChartScreen() {
             <button className="ghost" onClick={() => actions?.clearFocus()}>
               Reset
             </button>
+            <button className="ghost" onClick={onToggleDetailsPanel}>
+              {detailsPanelCollapsed ? "Show Details" : "Hide Details"}
+            </button>
           </div>
 
           <div className="row" style={{ minWidth: 220 }}>
@@ -308,7 +382,7 @@ export function ChartScreen() {
           </div>
         )}
 
-        <div className="chart-layout">
+        <div className={`chart-layout ${detailsPanelCollapsed ? "is-details-hidden" : ""}`}>
           <section className="chart-surface chart-surface-krona" style={chartSurfaceStyle}>
             {!dataset || !chartLayout ? (
               <div className="muted">No chart data yet. Import a dataset and open chart.</div>
@@ -354,6 +428,7 @@ export function ChartScreen() {
                   >
                     {wedgeRenderPlan.visibleNodes.map((entry) => {
                       const node = entry.node;
+                      const interactionPath = entry.interactionPath;
                       const innerRadius = radiusScale(node.depth - 1);
                       const outerRadius = radiusScale(entry.outerDepth);
                       const pathData = arcPath(
@@ -367,12 +442,14 @@ export function ChartScreen() {
                       }
 
                       const isInteractive =
-                        !entry.isGroupedHidden && !isUnclassifiedNodeName(node.name);
+                        interactionPath.length > 0 && !isUnclassifiedNodeName(node.name);
                       const isActive =
-                        isInteractive && activePath ? pathEquals(node.path, activePath) : false;
+                        isInteractive && activePath
+                          ? pathEquals(interactionPath, activePath)
+                          : false;
                       const isFocused =
                         isInteractive && resolvedFocusPath
-                          ? pathEquals(node.path, resolvedFocusPath)
+                          ? pathEquals(interactionPath, resolvedFocusPath)
                           : false;
                       const fill =
                         kronaColors.get(pathKey(entry.colorPath)) ?? KRONA_UNCLASSIFIED_COLOR;
@@ -403,20 +480,20 @@ export function ChartScreen() {
                             role={isInteractive ? "button" : undefined}
                             tabIndex={isInteractive ? 0 : undefined}
                             onMouseEnter={
-                              isInteractive ? () => actions?.hoverPath(node.path) : undefined
+                              isInteractive ? () => actions?.hoverPath(interactionPath) : undefined
                             }
                             onMouseLeave={
                               isInteractive ? () => actions?.hoverPath(null) : undefined
                             }
                             onClick={
-                              isInteractive ? () => actions?.focusPath(node.path) : undefined
+                              isInteractive ? () => actions?.focusPath(interactionPath) : undefined
                             }
                             onKeyDown={
                               isInteractive
                                 ? (event) => {
                                     if (event.key === "Enter" || event.key === " ") {
                                       event.preventDefault();
-                                      actions?.focusPath(node.path);
+                                      actions?.focusPath(interactionPath);
                                     }
                                   }
                                 : undefined
@@ -439,6 +516,7 @@ export function ChartScreen() {
 
                     {wedgeRenderPlan.visibleNodes.map((entry) => {
                       const node = entry.node;
+                      const interactionPath = entry.interactionPath;
                       const innerRadius = radiusScale(node.depth - 1);
                       const outerRadius = radiusScale(entry.outerDepth);
                       const label = createWedgeLabel(
@@ -447,26 +525,67 @@ export function ChartScreen() {
                         outerRadius,
                         maxDepth,
                         entry.outerDepth,
+                        labelFontSize,
                       );
                       if (!label) {
                         return null;
                       }
+
+                      const showTooltip =
+                        Boolean(hoverPath) &&
+                        pathEquals(interactionPath, hoverPath ?? []) &&
+                        label.isTruncated;
+                      const tooltip = showTooltip
+                        ? createHoverLabelTooltip(label, labelFontSize)
+                        : null;
                       return (
-                        <text
-                          key={`label-${entry.key}`}
-                          className="chart-wedge-label"
-                          x={label.x}
-                          y={label.y}
-                          textAnchor={label.anchor}
-                          dominantBaseline="middle"
-                          transform={`rotate(${label.rotate} ${label.x} ${label.y})`}
-                          style={{
-                            fontFamily: resolvedChartSettings.fontFamily,
-                            fontSize: `${labelFontSize}px`,
-                          }}
-                        >
-                          {label.text}
-                        </text>
+                        <g key={`label-${entry.key}`}>
+                          {tooltip && (
+                            <g className="chart-label-tooltip" pointerEvents="none">
+                              <rect
+                                className="chart-label-tooltip-box"
+                                x={tooltip.x}
+                                y={tooltip.y}
+                                width={tooltip.width}
+                                height={tooltip.height}
+                                rx={7}
+                                ry={7}
+                                fill="#ffffff"
+                                stroke={resolvedChartSettings.wedgeStrokeColor}
+                                strokeWidth={
+                                  Math.max(0.4, resolvedChartSettings.wedgeStrokeWidth) + 0.5
+                                }
+                              />
+                              <text
+                                className="chart-label-tooltip-text"
+                                x={tooltip.textX}
+                                y={tooltip.textY}
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                style={{
+                                  fontFamily: resolvedChartSettings.fontFamily,
+                                  fontSize: `${labelFontSize}px`,
+                                }}
+                              >
+                                {label.fullText}
+                              </text>
+                            </g>
+                          )}
+                          <text
+                            className="chart-wedge-label"
+                            x={label.x}
+                            y={label.y}
+                            textAnchor={label.anchor}
+                            dominantBaseline="middle"
+                            transform={`rotate(${label.rotate} ${label.x} ${label.y})`}
+                            style={{
+                              fontFamily: resolvedChartSettings.fontFamily,
+                              fontSize: `${labelFontSize}px`,
+                            }}
+                          >
+                            {label.text}
+                          </text>
+                        </g>
                       );
                     })}
 
@@ -499,98 +618,101 @@ export function ChartScreen() {
             )}
           </section>
 
-          <aside className="panel stack chart-details">
-            <h3>{hoverPath ? "Hover Details" : "Details"}</h3>
-            {!activeNode ? (
-              <div className="muted">Hover or click a wedge to inspect node details.</div>
-            ) : (
-              <div className="stack">
-                <div>
-                  <strong>{activeNode.name}</strong>
-                </div>
-                <div className="muted">path: {(activePath ?? []).join(" / ")}</div>
-
-                <div className="chart-stats">
-                  <div className="chart-stat">
-                    <span className="muted">Magnitude</span>
-                    <strong>{activeMagnitude.toLocaleString()}</strong>
-                  </div>
-                  <div className="chart-stat">
-                    <span className="muted">Share</span>
-                    <strong>{activeShare.toFixed(1)}%</strong>
-                  </div>
-                  <div className="chart-stat">
-                    <span className="muted">Children</span>
-                    <strong>{activeNode.children?.length ?? 0}</strong>
-                  </div>
-                </div>
-
-                {activeNode.description && <div>{activeNode.description}</div>}
-                {activeNode.url && (
-                  <div>
-                    <a href={activeNode.url} target="_blank" rel="noreferrer">
-                      {activeNode.url}
-                    </a>
-                  </div>
-                )}
-                <div className="stack">
-                  {visibleAttributes.map(([key, value]) => (
-                    <div key={key} className="muted">
-                      <strong>{key}:</strong> {value}
-                    </div>
-                  ))}
-                  <button
-                    className="ghost members-popover-trigger"
-                    onClick={onToggleMembersPopover}
-                    aria-haspopup="dialog"
-                    aria-expanded={membersPopoverOpen}
-                  >
-                    {`${unassignedMembersLabel} (${unassignedMembers.length})`}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="stack">
-              <h3>Top Segments</h3>
-              {topSegments.length === 0 ? (
-                <div className="muted">No segments in the current view.</div>
+          {!detailsPanelCollapsed && (
+            <aside className="panel stack chart-details">
+              <h3>{hoverPath ? "Hover Details" : "Details"}</h3>
+              {!activeNode ? (
+                <div className="muted">Hover or click a wedge to inspect node details.</div>
               ) : (
                 <div className="stack">
-                  {topSegments.map((node) => {
-                    const share = totalMagnitude > 0 ? (node.magnitude / totalMagnitude) * 100 : 0;
-                    const isActive = activePath ? pathEquals(node.path, activePath) : false;
-                    return (
-                      <button
-                        key={`key-${node.path.join("/")}`}
-                        className={`key-row ${isActive ? "is-active" : ""}`}
-                        onMouseEnter={() => actions?.hoverPath(node.path)}
-                        onMouseLeave={() => actions?.hoverPath(null)}
-                        onClick={() => actions?.focusPath(node.path)}
-                      >
-                        <span
-                          className="legend-dot"
-                          style={{
-                            background:
-                              kronaColors.get(pathKey(node.path)) ?? KRONA_UNCLASSIFIED_COLOR,
-                          }}
-                        />
-                        <span className="key-label">{node.name}</span>
-                        <span className="key-value">{share.toFixed(1)}%</span>
-                      </button>
-                    );
-                  })}
-                  {hiddenSegments > 0 && (
-                    <div className="muted">+ {hiddenSegments} more in this level</div>
+                  <div>
+                    <strong>{activeNode.name}</strong>
+                  </div>
+                  <div className="muted">path: {(activePath ?? []).join(" / ")}</div>
+
+                  <div className="chart-stats">
+                    <div className="chart-stat">
+                      <span className="muted">Magnitude</span>
+                      <strong>{activeMagnitude.toLocaleString()}</strong>
+                    </div>
+                    <div className="chart-stat">
+                      <span className="muted">Share</span>
+                      <strong>{activeShare.toFixed(1)}%</strong>
+                    </div>
+                    <div className="chart-stat">
+                      <span className="muted">Children</span>
+                      <strong>{activeNode.children?.length ?? 0}</strong>
+                    </div>
+                  </div>
+
+                  {activeNode.description && <div>{activeNode.description}</div>}
+                  {activeNode.url && (
+                    <div>
+                      <a href={activeNode.url} target="_blank" rel="noreferrer">
+                        {activeNode.url}
+                      </a>
+                    </div>
                   )}
+                  <div className="stack">
+                    {visibleAttributes.map(([key, value]) => (
+                      <div key={key} className="muted">
+                        <strong>{key}:</strong> {value}
+                      </div>
+                    ))}
+                    <button
+                      className="ghost members-popover-trigger"
+                      onClick={onToggleMembersPopover}
+                      aria-haspopup="dialog"
+                      aria-expanded={membersPopoverOpen}
+                    >
+                      {`${unassignedMembersLabel} (${unassignedMembers.length})`}
+                    </button>
+                  </div>
                 </div>
               )}
-            </div>
-          </aside>
+
+              <div className="stack">
+                <h3>Top Segments</h3>
+                {topSegments.length === 0 ? (
+                  <div className="muted">No segments in the current view.</div>
+                ) : (
+                  <div className="stack">
+                    {topSegments.map((node) => {
+                      const share =
+                        totalMagnitude > 0 ? (node.magnitude / totalMagnitude) * 100 : 0;
+                      const isActive = activePath ? pathEquals(node.path, activePath) : false;
+                      return (
+                        <button
+                          key={`key-${node.path.join("/")}`}
+                          className={`key-row ${isActive ? "is-active" : ""}`}
+                          onMouseEnter={() => actions?.hoverPath(node.path)}
+                          onMouseLeave={() => actions?.hoverPath(null)}
+                          onClick={() => actions?.focusPath(node.path)}
+                        >
+                          <span
+                            className="legend-dot"
+                            style={{
+                              background:
+                                kronaColors.get(pathKey(node.path)) ?? KRONA_UNCLASSIFIED_COLOR,
+                            }}
+                          />
+                          <span className="key-label">{node.name}</span>
+                          <span className="key-value">{share.toFixed(1)}%</span>
+                        </button>
+                      );
+                    })}
+                    {hiddenSegments > 0 && (
+                      <div className="muted">+ {hiddenSegments} more in this level</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </aside>
+          )}
         </div>
       </div>
 
-      {membersPopoverOpen && (
+      {!detailsPanelCollapsed && membersPopoverOpen && (
         <div className="members-popover-layer">
           <section
             className="panel members-popover members-popover-floating"
@@ -764,7 +886,7 @@ export function ChartScreen() {
                   <span className="muted">Font Size (px)</span>
                   <input
                     type="number"
-                    min={8}
+                    min={MIN_LABEL_FONT_SIZE}
                     step={1}
                     value={resolvedChartSettings.fontSizePx}
                     onChange={(event) => {
@@ -772,7 +894,7 @@ export function ChartScreen() {
                       if (!Number.isFinite(parsed)) {
                         return;
                       }
-                      updateChartSettings({ fontSizePx: Math.max(8, parsed) });
+                      updateChartSettings({ fontSizePx: Math.max(MIN_LABEL_FONT_SIZE, parsed) });
                     }}
                   />
                 </label>
@@ -793,12 +915,10 @@ export function ChartScreen() {
                       type="number"
                       min={240}
                       step={10}
-                      value={
-                        typeof resolvedChartSettings.width === "number"
-                          ? resolvedChartSettings.width
-                          : ""
-                      }
+                      value={widthInputValue}
                       onChange={onDimensionValueChange("width")}
+                      onFocus={onDimensionInputFocus("width")}
+                      onBlur={onDimensionInputBlur("width")}
                       disabled={widthMode === "fit"}
                     />
                   </div>
@@ -820,12 +940,10 @@ export function ChartScreen() {
                       type="number"
                       min={240}
                       step={10}
-                      value={
-                        typeof resolvedChartSettings.height === "number"
-                          ? resolvedChartSettings.height
-                          : ""
-                      }
+                      value={heightInputValue}
                       onChange={onDimensionValueChange("height")}
+                      onFocus={onDimensionInputFocus("height")}
+                      onBlur={onDimensionInputBlur("height")}
                       disabled={heightMode === "fit"}
                     />
                   </div>
@@ -1008,6 +1126,7 @@ interface WedgeRenderNode {
   hiddenCount: number;
   key: string;
   colorPath: string[];
+  interactionPath: string[];
   outerDepth: number;
 }
 
@@ -1031,14 +1150,16 @@ export function createWedgeRenderPlan(
         hiddenCount: 0,
         key: pathKey(node.path),
         colorPath: node.path,
+        interactionPath: node.path,
         outerDepth: node.depth,
       })),
     };
   }
 
-  const minVisibleWidth = Math.max(8, labelFontSize) * 2.3;
+  const minVisibleWidth = Math.max(MIN_LABEL_FONT_SIZE, labelFontSize) * 2.3;
   const radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
   const childrenByParent = new Map<string, ChartLayoutNode[]>();
+  const visiblePathKeys = new Set(visibleNodes.map((node) => pathKey(node.path)));
 
   for (const node of visibleNodes) {
     const parentKey = pathKey(node.path.slice(0, -1));
@@ -1073,6 +1194,7 @@ export function createWedgeRenderPlan(
           hiddenCount: 0,
           key: pathKey(child.path),
           colorPath: child.path,
+          interactionPath: child.path,
           outerDepth: child.depth,
         });
         index += 1;
@@ -1090,6 +1212,9 @@ export function createWedgeRenderPlan(
       const run = children.slice(index, runEnd + 1);
       const first = run[0]!;
       const last = run[run.length - 1]!;
+      const parentPath = first.path.slice(0, -1);
+      const interactionPath = parentPath.length > 0 ? parentPath : first.path;
+      const groupedColorPath = resolveGroupedColorPath(parentPath, first.path, visiblePathKeys);
       const hiddenCount = run.length;
       const groupedMagnitude = run.reduce((sum, node) => sum + node.magnitude, 0);
 
@@ -1105,7 +1230,8 @@ export function createWedgeRenderPlan(
         isGroupedHidden: true,
         hiddenCount,
         key: `${parentKey}/[${hiddenCount}-more-${hiddenGroupIndex}]`,
-        colorPath: first.path,
+        colorPath: groupedColorPath,
+        interactionPath,
         outerDepth: first.depth,
       });
 
@@ -1148,12 +1274,37 @@ function shouldGroupHiddenChild(
   return widthEstimate < minVisibleWidth;
 }
 
+function resolveGroupedColorPath(
+  parentPath: string[],
+  fallbackPath: string[],
+  visiblePathKeys: Set<string>,
+): string[] {
+  for (let length = parentPath.length; length >= 2; length -= 1) {
+    const candidate = parentPath.slice(0, length);
+    if (visiblePathKeys.has(pathKey(candidate))) {
+      return candidate;
+    }
+  }
+  return fallbackPath;
+}
+
 interface WedgeLabel {
   text: string;
+  fullText: string;
+  isTruncated: boolean;
   x: number;
   y: number;
   rotate: number;
   anchor: "start" | "middle" | "end";
+}
+
+interface HoverLabelTooltip {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  textX: number;
+  textY: number;
 }
 
 function createWedgeLabel(
@@ -1162,16 +1313,19 @@ function createWedgeLabel(
   outerRadius: number,
   maxDepth: number,
   outerDepth: number,
+  fontSizePx: number,
 ): WedgeLabel | null {
   const isOuterRing = maxDepth <= 1 || outerDepth >= maxDepth;
   const angleSpan = node.endAngle - node.startAngle;
   const ringThickness = outerRadius - innerRadius;
-  const radius = innerRadius + ringThickness * 0.56;
+  const radius = isOuterRing
+    ? outerRadius + fontSizePx * 0.75 + 2
+    : innerRadius + ringThickness * 0.56;
   const tangentialSpan = radius * angleSpan;
 
-  const minAngleSpan = isOuterRing ? 0.018 : 0.055;
-  const minRingThickness = isOuterRing ? 10 : 14;
-  const minTangentialSpan = isOuterRing ? 6 : 18;
+  const minAngleSpan = isOuterRing ? 0.012 : 0.055;
+  const minRingThickness = isOuterRing ? 8 : 14;
+  const minTangentialSpan = isOuterRing ? 4 : 18;
 
   if (
     angleSpan < minAngleSpan ||
@@ -1184,10 +1338,15 @@ function createWedgeLabel(
   const midAngle = (node.startAngle + node.endAngle) / 2;
   const point = polarPoint(radius, midAngle);
 
+  const approximateCharWidth = Math.max(4, fontSizePx * 0.58);
   const availableTextLength = isOuterRing
-    ? Math.max(0, ringThickness - 6)
-    : Math.max(0, tangentialSpan - 4);
-  const maxChars = Math.max(isOuterRing ? 3 : 6, Math.floor(availableTextLength / 6.8));
+    ? Math.max(0, outerRadius + fontSizePx * 10)
+    : Math.max(0, tangentialSpan - fontSizePx * 0.35);
+  const maxChars = Math.max(
+    isOuterRing ? 5 : 6,
+    Math.floor(availableTextLength / approximateCharWidth),
+  );
+  const isTruncated = node.name.length > maxChars;
   const text = ellipsize(node.name, maxChars);
   const baseRotation = isOuterRing ? (midAngle * 180) / Math.PI - 90 : (midAngle * 180) / Math.PI;
   const normalizedRotation = normalizeDegrees(baseRotation);
@@ -1196,10 +1355,31 @@ function createWedgeLabel(
 
   return {
     text,
+    fullText: node.name,
+    isTruncated,
     x: point.x,
     y: point.y,
     rotate,
     anchor: isOuterRing ? (flip ? "end" : "start") : "middle",
+  };
+}
+
+function createHoverLabelTooltip(label: WedgeLabel, fontSizePx: number): HoverLabelTooltip {
+  const horizontalPadding = 9;
+  const verticalPadding = 5;
+  const approxTextWidth = Math.max(20, label.fullText.length * fontSizePx * 0.58);
+  const width = approxTextWidth + horizontalPadding * 2;
+  const height = fontSizePx + verticalPadding * 2 + 2;
+  const centerX = label.x;
+  const centerY = label.y - fontSizePx * 1.2;
+
+  return {
+    x: centerX - width / 2,
+    y: centerY - height / 2,
+    width,
+    height,
+    textX: centerX,
+    textY: centerY,
   };
 }
 
@@ -1217,6 +1397,7 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
   }
 
   const root = layout.nodes.find((node) => node.depth === 0) ?? layout.nodes[0]!;
+  const existingPathKeys = new Set(layout.nodes.map((node) => pathKey(node.path)));
   const childrenByParent = new Map<string, ChartLayoutNode[]>();
   for (const node of layout.nodes) {
     if (isUnclassifiedNodeName(node.name)) {
@@ -1226,7 +1407,9 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
     if (node.depth === 0) {
       continue;
     }
-    const parent = pathKey(node.path.slice(0, -1));
+    const parent = pathKey(
+      resolveNearestExistingAncestorPath(node.path.slice(0, -1), existingPathKeys),
+    );
     const children = childrenByParent.get(parent);
     if (children) {
       children.push(node);
@@ -1302,6 +1485,19 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
 
   assignColor(root, 0, 1);
   return colors;
+}
+
+function resolveNearestExistingAncestorPath(
+  path: string[],
+  existingPathKeys: Set<string>,
+): string[] {
+  for (let length = path.length; length >= 0; length -= 1) {
+    const candidate = path.slice(0, length);
+    if (existingPathKeys.has(pathKey(candidate))) {
+      return candidate;
+    }
+  }
+  return [];
 }
 
 function lerp(
