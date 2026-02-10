@@ -2,6 +2,7 @@ export * from "./attributes";
 export * from "./classification";
 export * from "./colors";
 export * from "./constants";
+export * from "./dataset-selector";
 export * from "./geometry";
 export * from "./labels";
 export * from "./path";

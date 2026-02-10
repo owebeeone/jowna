@@ -26,9 +26,21 @@ function downloadBlobFile(fileName: string, blob: Blob): void {
   anchor.href = url;
   anchor.download = fileName;
   anchor.rel = "noopener";
-  anchor.click();
+  anchor.style.display = "none";
 
-  URL.revokeObjectURL(url);
+  if (document.body) {
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  } else {
+    anchor.click();
+  }
+
+  // Keep the object URL around briefly so large downloads are not truncated.
+  const revokeDelayMs = 5_000;
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, revokeDelayMs);
 }
 
 function serializeSvgForDownload(svg: SVGSVGElement): string {

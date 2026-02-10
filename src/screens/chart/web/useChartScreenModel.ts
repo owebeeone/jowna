@@ -8,6 +8,8 @@ import {
 } from "../../../features/chart";
 import {
   ACTIVE_DATASET,
+  ACTIVE_DATASET_ID,
+  ACTIVE_PROJECT,
   CHART_DEPTH_LIMIT,
   CHART_DEPTH_LIMIT_TAP,
   CHART_FOCUS_PATH,
@@ -18,6 +20,7 @@ import {
   CHART_SELECTED_PATH,
   CHART_SETTINGS_STATE,
   CHART_SETTINGS_STATE_TAP,
+  DATASETS,
   DEFAULT_CHART_SETTINGS,
   JOWNA_ACTIONS,
 } from "../../../grips";
@@ -27,6 +30,7 @@ import {
   OUTER_RADIUS,
   buildKronaColorMap,
   computeLayoutDataMaxDepth,
+  createDatasetSelectorState,
   createRadiusScale,
   createWedgeRenderPlan,
   findNodeByPath,
@@ -45,6 +49,9 @@ import { downloadHtmlFile, downloadSvgFile, toSvgFileName } from "./download";
 export function useChartScreenModel() {
   const actions = useGrip(JOWNA_ACTIONS);
   const dataset = useGrip(ACTIVE_DATASET);
+  const activeProject = useGrip(ACTIVE_PROJECT);
+  const datasets = useGrip(DATASETS) ?? [];
+  const activeDatasetId = useGrip(ACTIVE_DATASET_ID) ?? null;
   const chartLayout = useGrip(CHART_LAYOUT);
   const focusPath = useGrip(CHART_FOCUS_PATH);
   const selectedPath = useGrip(CHART_SELECTED_PATH);
@@ -108,6 +115,10 @@ export function useChartScreenModel() {
     }
     return [{ label: `Custom (${current})`, value: current }, ...CHART_FONT_OPTIONS];
   }, [resolvedChartSettings.fontFamily]);
+  const datasetSelector = useMemo(
+    () => createDatasetSelectorState(datasets, activeDatasetId),
+    [activeDatasetId, datasets],
+  );
 
   const colorLayout = useMemo(() => {
     if (!dataset) {
@@ -252,18 +263,29 @@ export function useChartScreenModel() {
       updateChartSettings({ [dimension]: normalized } as Partial<ChartSettings>);
     };
 
-  const onDownloadHtml = () => {
+  const onDownloadHtml = async () => {
     if (!dataset) {
       return;
     }
 
-    const html = createStandaloneChartDocument({
-      datasetName: dataset.name,
-      tree: dataset.tree,
-      depthLimit,
-      chartSettings: resolvedChartSettings,
-    });
-    downloadHtmlFile(toStandaloneChartFileName(dataset.name), html);
+    try {
+      const html = await createStandaloneChartDocument({
+        project: activeProject ?? null,
+        datasets,
+        activeDatasetId,
+        depthLimit,
+        chartSettings: resolvedChartSettings,
+        focusPath,
+      });
+      downloadHtmlFile(toStandaloneChartFileName(dataset.name), html);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed generating standalone chart HTML.";
+      console.warn("Failed generating standalone chart HTML", error);
+      if (typeof window !== "undefined") {
+        window.alert(message);
+      }
+    }
   };
 
   const onDownloadSvg = () => {
@@ -297,6 +319,14 @@ export function useChartScreenModel() {
     setSettingsPopoverOpen(false);
   };
 
+  const onSelectDataset = (nextDatasetId: string) => {
+    if (!nextDatasetId || nextDatasetId === datasetSelector.selectedId) {
+      return;
+    }
+    actions?.openChart(nextDatasetId);
+    setOpenMembersPopoverForPath(null);
+  };
+
   useEffect(() => {
     if (activeDimensionDraft !== "width") {
       const nextWidth =
@@ -324,6 +354,9 @@ export function useChartScreenModel() {
   return {
     actions,
     dataset,
+    activeProject,
+    datasets,
+    activeDatasetId,
     chartLayout,
     focusPath,
     selectedPath,
@@ -344,6 +377,7 @@ export function useChartScreenModel() {
     widthInputValue,
     heightInputValue,
     chartFontOptions,
+    datasetSelector,
     kronaColors,
     resolvedFocusPath,
     activePath,
@@ -377,6 +411,7 @@ export function useChartScreenModel() {
     onToggleDetailsPanel,
     openSettingsPopover,
     closeSettingsPopover,
+    onSelectDataset,
   };
 }
 

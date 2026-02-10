@@ -1,11 +1,13 @@
 {
   "name": "jowna",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:app": "tsc -b && vite build",
+    "build:static": "vite build --config vite.static.config.ts",
+    "build": "npm run build:app && npm run build:static",
     "deploy:docs": "npm run build && mkdir -p docs && rsync -a --delete dist/ docs/ && touch docs/.nojekyll",
     "publish:site": "python3 tools/publish.py",
     "preview": "vite preview",

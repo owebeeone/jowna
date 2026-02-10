@@ -4,12 +4,24 @@ export function ChartHeader() {
   const model = useChartScreenContext();
 
   return (
-    <header className="panel row" style={{ justifyContent: "space-between" }}>
+    <header className="panel row chart-header">
       <div>
-        <h1 style={{ marginBottom: 4 }}>Chart View</h1>
-        <div className="muted">{model.dataset?.name ?? "No active dataset"}</div>
+        <h1 style={{ marginBottom: 0 }}>Chart View</h1>
       </div>
-      <div className="row">
+      <div className="row chart-header-actions">
+        {model.datasetSelector.showSelector && (
+          <select
+            className="chart-dataset-select"
+            value={model.datasetSelector.selectedId ?? ""}
+            onChange={(event) => model.onSelectDataset(event.target.value)}
+          >
+            {model.datasetSelector.options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+        )}
         <button className="ghost" onClick={model.openSettingsPopover}>
           Chart Settings
         </button>
