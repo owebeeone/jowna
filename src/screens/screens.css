@@ -465,6 +465,19 @@ button:disabled {
   row-gap: 10px;
 }
 
+.chart-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-title-logo {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: block;
+}
+
 .chart-header-actions {
   margin-left: auto;
   min-width: 0;
