@@ -29,7 +29,7 @@ import {
   MIN_LABEL_FONT_SIZE,
   OUTER_RADIUS,
   buildKronaColorMap,
-  computeLayoutDataMaxDepth,
+  computeLayoutDataMaxDepthWithMode,
   createDatasetSelectorState,
   createRadiusScale,
   createWedgeRenderPlan,
@@ -136,8 +136,12 @@ export function useChartScreenModel() {
     });
   }, [dataset, resolvedChartSettings.collapseRedundant]);
   const kronaColors = useMemo(
-    () => buildKronaColorMap(colorLayout ?? chartLayout ?? null),
-    [colorLayout, chartLayout],
+    () =>
+      buildKronaColorMap(
+        colorLayout ?? chartLayout ?? null,
+        resolvedChartSettings.collapseRedundant !== false,
+      ),
+    [colorLayout, chartLayout, resolvedChartSettings.collapseRedundant],
   );
 
   const resolvedFocusPath = dataset ? (focusPath ?? [dataset.tree.name]) : null;
@@ -181,13 +185,23 @@ export function useChartScreenModel() {
   const topSegments = topLevelSegments.slice(0, MAX_KEY_SEGMENTS);
   const hiddenSegments = topLevelSegments.length - topSegments.length;
 
-  const layoutDataMaxDepth = computeLayoutDataMaxDepth(chartLayout ?? null);
+  const layoutDataMaxDepth = computeLayoutDataMaxDepthWithMode(
+    chartLayout ?? null,
+    resolvedChartSettings.collapseRedundant !== false,
+  );
   const maxDepth = resolveRenderDepth(layoutDataMaxDepth, depthLimit);
-  const radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
+  const displayDepth = maxDepth + 1;
+  const radiusScale = createRadiusScale(displayDepth, OUTER_RADIUS, labelFontSize);
   const centerDiscRadius = maxDepth > 0 ? Math.max(8, Math.min(42, radiusScale(1) * 0.78)) : 42;
   const wedgeRenderPlan = useMemo(
-    () => createWedgeRenderPlan(chartLayout ?? null, maxDepth, labelFontSize),
-    [chartLayout, labelFontSize, maxDepth],
+    () =>
+      createWedgeRenderPlan(
+        chartLayout ?? null,
+        maxDepth,
+        labelFontSize,
+        resolvedChartSettings.collapseRedundant !== false,
+      ),
+    [chartLayout, labelFontSize, maxDepth, resolvedChartSettings.collapseRedundant],
   );
   const parentFocusPath =
     resolvedFocusPath && resolvedFocusPath.length > 1 ? resolvedFocusPath.slice(0, -1) : null;
@@ -394,6 +408,7 @@ export function useChartScreenModel() {
     topSegments,
     hiddenSegments,
     maxDepth,
+    displayDepth,
     radiusScale,
     centerDiscRadius,
     wedgeRenderPlan,

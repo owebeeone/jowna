@@ -11,6 +11,8 @@ export interface ChartLayoutNode {
   path: string[];
   name: string;
   depth: number;
+  collapsedDepth?: number;
+  collapseEligible?: boolean;
   magnitude: number;
   startAngle: number;
   endAngle: number;

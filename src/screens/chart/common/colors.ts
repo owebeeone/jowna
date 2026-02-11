@@ -6,10 +6,13 @@ import {
   KRONA_UNCLASSIFIED_COLOR,
 } from "./constants";
 import { isUnclassifiedNodeName } from "./classification";
-import { computeLayoutDataMaxDepth } from "./geometry";
+import { computeLayoutDataMaxDepthWithMode } from "./geometry";
 import { pathKey } from "./path";
 
-export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string, string> {
+export function buildKronaColorMap(
+  layout: ChartLayoutResult | null,
+  collapseEnabled = false,
+): Map<string, string> {
   const colors = new Map<string, string>();
   if (!layout || layout.nodes.length === 0) {
     return colors;
@@ -46,7 +49,7 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
     });
   });
 
-  const maxDepth = computeLayoutDataMaxDepth(layout);
+  const maxDepth = computeLayoutDataMaxDepthWithMode(layout, collapseEnabled) + 1;
   const depthNormalizer = maxDepth > 8 ? 8 : Math.max(maxDepth, 1);
   const lightnessFactor = (KRONA_LIGHTNESS_MAX - KRONA_LIGHTNESS_BASE) / depthNormalizer;
 
@@ -56,13 +59,15 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
       boundedHueMax = hueMin + 1 / 12;
     }
 
-    if (node.depth > 0) {
+    const nodeDepth = collapseEnabled ? (node.collapsedDepth ?? node.depth) : node.depth;
+    const relativeDepth = nodeDepth + 1;
+    if (nodeDepth > 0) {
       if (node.magnitude <= 0 || isUnclassifiedNodeName(node.name)) {
         colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
       } else {
         const lightness = Math.min(
           KRONA_LIGHTNESS_MAX,
-          KRONA_LIGHTNESS_BASE + (node.depth - 1) * lightnessFactor,
+          KRONA_LIGHTNESS_BASE + (relativeDepth - 1) * lightnessFactor,
         );
         const rgb = hslToRgb(hueMin, KRONA_SATURATION, lightness);
         colors.set(pathKey(node.path), rgbText(rgb.r, rgb.g, rgb.b));

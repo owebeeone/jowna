@@ -78,7 +78,8 @@ export function ChartCanvasPanel() {
                     : false;
                 const fill = isUnclassifiedNodeName(node.name)
                   ? KRONA_UNCLASSIFIED_COLOR
-                  : resolveNodeFillColor(
+                  : entry.fillOverride ??
+                    resolveNodeFillColor(
                       model.kronaColors,
                       [entry.colorPath, interactionPath, node.path],
                       KRONA_UNCLASSIFIED_COLOR,
@@ -153,7 +154,7 @@ export function ChartCanvasPanel() {
                   node,
                   innerRadius,
                   outerRadius,
-                  model.maxDepth,
+                  model.displayDepth,
                   entry.labelOuterDepth,
                   model.labelFontSize,
                 );

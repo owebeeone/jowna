@@ -3,7 +3,7 @@ import type { ChartLayoutResult } from "../../../features/chart";
 import { createWedgeRenderPlan } from "./wedge-plan";
 
 describe("createWedgeRenderPlan", () => {
-  it("keeps parent wedges to the next ring while leaves extend to the outer edge", () => {
+  it("keeps wedges rendered to the full outer ring", () => {
     const layout: ChartLayoutResult = {
       totalMagnitude: 100,
       nodes: [
@@ -45,16 +45,16 @@ describe("createWedgeRenderPlan", () => {
     const plan = createWedgeRenderPlan(layout, 4, 12);
     const byPath = new Map(plan.visibleNodes.map((entry) => [entry.node.path.join("/"), entry]));
 
-    expect(byPath.get("Root/A")?.renderOuterDepth).toBe(4);
-    expect(byPath.get("Root/B")?.renderOuterDepth).toBe(1);
-    expect(byPath.get("Root/B/B1")?.renderOuterDepth).toBe(4);
+    expect(byPath.get("Root/A")?.renderOuterDepth).toBe(5);
+    expect(byPath.get("Root/B")?.renderOuterDepth).toBe(5);
+    expect(byPath.get("Root/B/B1")?.renderOuterDepth).toBe(5);
 
-    expect(byPath.get("Root/A")?.labelOuterDepth).toBe(4);
-    expect(byPath.get("Root/B")?.labelOuterDepth).toBe(1);
-    expect(byPath.get("Root/B/B1")?.labelOuterDepth).toBe(4);
+    expect(byPath.get("Root/A")?.labelOuterDepth).toBe(5);
+    expect(byPath.get("Root/B")?.labelOuterDepth).toBe(5);
+    expect(byPath.get("Root/B/B1")?.labelOuterDepth).toBe(5);
   });
 
-  it("uses parent interaction path and parent color path for grouped hidden wedges", () => {
+  it("uses parent interaction path and first hidden wedge color path for grouped hidden wedges", () => {
     const layout: ChartLayoutResult = {
       totalMagnitude: 100,
       nodes: [
@@ -98,10 +98,10 @@ describe("createWedgeRenderPlan", () => {
 
     expect(grouped).toBeTruthy();
     expect(grouped?.interactionPath).toEqual(["Root", "Alpha"]);
-    expect(grouped?.colorPath).toEqual(["Root", "Alpha"]);
+    expect(grouped?.colorPath).toEqual(["Root", "Alpha", "Tiny-1"]);
   });
 
-  it("falls back to child color path for top-level grouped hidden wedges", () => {
+  it("does not group hidden wedges in the first visible ring", () => {
     const layout: ChartLayoutResult = {
       totalMagnitude: 100,
       nodes: [
@@ -142,8 +142,6 @@ describe("createWedgeRenderPlan", () => {
 
     const plan = createWedgeRenderPlan(layout, 1, 24);
     const grouped = plan.visibleNodes.find((entry) => entry.isGroupedHidden);
-
-    expect(grouped).toBeTruthy();
-    expect(grouped?.colorPath).toEqual(["Root", "Tiny-1"]);
+    expect(grouped).toBeUndefined();
   });
 });

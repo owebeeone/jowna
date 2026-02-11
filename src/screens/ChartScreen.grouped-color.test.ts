@@ -34,8 +34,8 @@ describe("ChartScreen grouped hidden color", () => {
       depthLimit: 20,
     });
 
-    const plan = createWedgeRenderPlan(layout, 20, 8);
-    const colors = buildKronaColorMap(layout);
+    const plan = createWedgeRenderPlan(layout, 20, 8, true);
+    const colors = buildKronaColorMap(layout, true);
 
     const grouped = plan.visibleNodes.filter((entry) => entry.isGroupedHidden);
     const greyGrouped = grouped.filter((entry) => {
