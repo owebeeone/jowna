@@ -1,7 +1,7 @@
 {
   "name": "jowna",
   "private": true,
-  "version": "0.2.5",
+  "version": "0.2.6",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {

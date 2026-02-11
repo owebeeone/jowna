@@ -221,6 +221,9 @@ export const PREVIEW_FILTER_TAP = defineGrip<AtomTapHandle<string>>("PreviewFilt
 
 export const IMPORT_POPOVER_OPEN = defineGrip<boolean>("ImportPopoverOpen", false);
 export const IMPORT_POPOVER_OPEN_TAP = defineGrip<AtomTapHandle<boolean>>("ImportPopoverOpen.Tap");
+export const ROUTE_LOAD_ERROR = defineGrip<string | null>("RouteLoadError", null);
+export const ROUTE_LOAD_ERROR_TAP =
+  defineGrip<AtomTapHandle<string | null>>("RouteLoadError.Tap");
 
 // Chart
 export const CHART_SETTINGS_STATE = defineGrip<ChartSettings>(

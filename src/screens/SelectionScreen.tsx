@@ -25,6 +25,8 @@ import {
   PREVIEW_FILTER,
   PREVIEW_FILTER_TAP,
   PROJECTS,
+  ROUTE_LOAD_ERROR,
+  ROUTE_LOAD_ERROR_TAP,
 } from "../grips";
 
 type DeleteDialogTarget =
@@ -56,6 +58,8 @@ export function SelectionScreen() {
   const importLoading = useGrip(IMPORT_LOADING) ?? false;
   const importPopoverOpen = useGrip(IMPORT_POPOVER_OPEN) ?? false;
   const importPopoverOpenTap = useGrip(IMPORT_POPOVER_OPEN_TAP);
+  const routeLoadError = useGrip(ROUTE_LOAD_ERROR);
+  const routeLoadErrorTap = useGrip(ROUTE_LOAD_ERROR_TAP);
 
   const projectNameBind = useTextGrip(NEW_PROJECT_NAME, NEW_PROJECT_NAME_TAP);
   const previewFilterBind = useTextGrip(PREVIEW_FILTER, PREVIEW_FILTER_TAP);
@@ -113,6 +117,10 @@ export function SelectionScreen() {
 
   const openImportPopover = () => {
     importPopoverOpenTap?.set(true);
+  };
+
+  const onDismissRouteLoadError = () => {
+    routeLoadErrorTap?.set(null);
   };
 
   const closeImportPopover = () => {
@@ -1068,6 +1076,26 @@ export function SelectionScreen() {
       )}
 
       <HelpPopover open={helpPopoverOpen} onClose={() => setHelpPopoverOpen(false)} />
+
+      {routeLoadError && (
+        <div className="delete-confirm-backdrop" onClick={onDismissRouteLoadError}>
+          <section
+            className="panel delete-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Example load error"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3>Example Load Error</h3>
+            <div>{routeLoadError}</div>
+            <div className="row delete-confirm-actions">
+              <button className="ghost" onClick={onDismissRouteLoadError}>
+                Close
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {deleteDialogTarget && (
         <div className="delete-confirm-backdrop" onClick={onCancelDeleteProject}>
