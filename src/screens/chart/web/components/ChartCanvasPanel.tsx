@@ -1,6 +1,7 @@
 import {
   KRONA_UNCLASSIFIED_COLOR,
   arcPath,
+  createKeyCallouts,
   createHoverLabelTooltip,
   createWedgeLabel,
   isUnclassifiedNodeName,
@@ -11,6 +12,48 @@ import { useChartScreenContext } from "../context";
 
 export function ChartCanvasPanel() {
   const model = useChartScreenContext();
+  const viewWidth = 620;
+  const viewHeight = 620;
+  const centerX = viewWidth / 2;
+  const centerY = viewHeight / 2;
+
+  const resolveEntryFill = (entry: (typeof model.wedgeRenderPlan.visibleNodes)[number]) => {
+    if (isUnclassifiedNodeName(entry.node.name)) {
+      return KRONA_UNCLASSIFIED_COLOR;
+    }
+    return (
+      entry.fillOverride ??
+      resolveNodeFillColor(
+        model.kronaColors,
+        [entry.colorPath, entry.interactionPath, entry.node.path],
+        KRONA_UNCLASSIFIED_COLOR,
+      )
+    );
+  };
+
+  const fillByEntryKey = new Map(
+    model.wedgeRenderPlan.visibleNodes.map((entry) => [entry.key, resolveEntryFill(entry)]),
+  );
+  const keyCallouts = createKeyCallouts({
+    entries: model.wedgeRenderPlan.visibleNodes
+      .filter((entry) => entry.isKeyed)
+      .map((entry) => ({
+        key: entry.key,
+        name: entry.node.name,
+        magnitude: entry.node.magnitude,
+        startAngle: entry.node.startAngle,
+        endAngle: entry.node.endAngle,
+        fill: fillByEntryKey.get(entry.key) ?? KRONA_UNCLASSIFIED_COLOR,
+        interactionPath: entry.interactionPath,
+      })),
+    totalMagnitude: model.chartLayout?.totalMagnitude ?? 0,
+    width: viewWidth,
+    height: viewHeight,
+    centerX,
+    centerY,
+    radius: model.radiusScale(model.displayDepth),
+    fontSizePx: model.labelFontSize,
+  });
 
   return (
     <section className="chart-surface chart-surface-krona" style={model.chartSurfaceStyle}>
@@ -21,7 +64,7 @@ export function ChartCanvasPanel() {
           <svg
             ref={model.chartSvgRef}
             className="chart-canvas chart-canvas-krona"
-            viewBox="0 0 620 620"
+            viewBox={`0 0 ${viewWidth} ${viewHeight}`}
             role="img"
             style={model.chartCanvasStyle}
           >
@@ -76,14 +119,7 @@ export function ChartCanvasPanel() {
                   isInteractive && model.resolvedFocusPath
                     ? pathEquals(interactionPath, model.resolvedFocusPath)
                     : false;
-                const fill = isUnclassifiedNodeName(node.name)
-                  ? KRONA_UNCLASSIFIED_COLOR
-                  : entry.fillOverride ??
-                    resolveNodeFillColor(
-                      model.kronaColors,
-                      [entry.colorPath, interactionPath, node.path],
-                      KRONA_UNCLASSIFIED_COLOR,
-                    );
+                const fill = fillByEntryKey.get(entry.key) ?? KRONA_UNCLASSIFIED_COLOR;
                 const wedgeKey = entry.key;
                 const titleText = entry.isGroupedHidden
                   ? `${entry.hiddenCount} more`
@@ -158,7 +194,7 @@ export function ChartCanvasPanel() {
                   entry.labelOuterDepth,
                   model.labelFontSize,
                 );
-                if (!label) {
+                if (entry.isKeyed || !label) {
                   return null;
                 }
 
@@ -241,6 +277,92 @@ export function ChartCanvasPanel() {
                 {model.activeShare.toFixed(1)}% of view
               </text>
             </g>
+            {keyCallouts.map((callout) => {
+              const isInteractive =
+                callout.interactionPath.length > 0 &&
+                !isUnclassifiedNodeName(
+                  callout.interactionPath[callout.interactionPath.length - 1] ?? "",
+                );
+              const isActive =
+                isInteractive && model.activePath
+                  ? pathEquals(callout.interactionPath, model.activePath)
+                  : false;
+              const isFocused =
+                isInteractive && model.resolvedFocusPath
+                  ? pathEquals(callout.interactionPath, model.resolvedFocusPath)
+                  : false;
+
+              return (
+                <g
+                  key={`key-callout-${callout.key}`}
+                  className={`chart-key-callout ${isActive ? "is-active" : ""} ${isFocused ? "is-focus" : ""}`}
+                  role={isInteractive ? "button" : undefined}
+                  tabIndex={isInteractive ? 0 : undefined}
+                  onMouseEnter={
+                    isInteractive
+                      ? () => model.actions?.hoverPath(callout.interactionPath)
+                      : undefined
+                  }
+                  onMouseLeave={isInteractive ? () => model.actions?.hoverPath(null) : undefined}
+                  onClick={
+                    isInteractive
+                      ? () => model.actions?.focusPath(callout.interactionPath)
+                      : undefined
+                  }
+                  onKeyDown={
+                    isInteractive
+                      ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            model.actions?.focusPath(callout.interactionPath);
+                          }
+                        }
+                      : undefined
+                  }
+                >
+                  <path
+                    className="chart-key-line"
+                    d={callout.linePath}
+                    strokeWidth={callout.lineStrokeWidth}
+                  />
+                  <rect
+                    className="chart-key-text-box"
+                    x={callout.textBoxX}
+                    y={callout.textBoxY}
+                    width={callout.textBoxWidth}
+                    height={callout.textBoxHeight}
+                    rx={Math.max(4, model.labelFontSize * 0.42)}
+                    ry={Math.max(4, model.labelFontSize * 0.42)}
+                    fill="#ffffff"
+                    stroke={model.resolvedChartSettings.wedgeStrokeColor}
+                    strokeWidth={Math.max(0.4, model.resolvedChartSettings.wedgeStrokeWidth) + 0.5}
+                  />
+                  <text
+                    className="chart-key-text"
+                    x={callout.textX}
+                    y={callout.textY}
+                    textAnchor={callout.textAnchor}
+                    dominantBaseline="middle"
+                    style={{
+                      fontFamily: model.resolvedChartSettings.fontFamily,
+                      fontSize: `${model.labelFontSize}px`,
+                    }}
+                  >
+                    {callout.text}
+                  </text>
+                  <rect
+                    className="chart-key-color-box"
+                    x={callout.colorBoxX}
+                    y={callout.colorBoxY}
+                    width={callout.colorBoxSize}
+                    height={callout.colorBoxSize}
+                    fill={callout.fill}
+                    stroke={model.resolvedChartSettings.wedgeStrokeColor}
+                    strokeWidth={Math.max(0.4, model.resolvedChartSettings.wedgeStrokeWidth)}
+                  />
+                </g>
+              );
+            })}
           </svg>
           <div className="chart-hint muted">
             Click a segment to zoom. Hover to inspect. Click center to move up.

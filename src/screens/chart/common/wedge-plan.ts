@@ -1,6 +1,5 @@
 import type { ChartLayoutNode, ChartLayoutResult } from "../../../features/chart";
 import { KRONA_UNCLASSIFIED_COLOR, MIN_LABEL_FONT_SIZE, OUTER_RADIUS } from "./constants";
-import { isUnclassifiedNodeName } from "./classification";
 import { createRadiusScale } from "./geometry";
 import { pathKey } from "./path";
 
@@ -11,6 +10,7 @@ export interface WedgeRenderPlan {
 export interface WedgeRenderNode {
   node: ChartLayoutNode;
   isGroupedHidden: boolean;
+  isKeyed: boolean;
   hiddenCount: number;
   key: string;
   colorPath: string[];
@@ -39,6 +39,7 @@ export function createWedgeRenderPlan(
       visibleNodes: visibleNodes.map((node) => ({
         node,
         isGroupedHidden: false,
+        isKeyed: false,
         hiddenCount: 0,
         key: pathKey(node.path),
         colorPath: node.path,
@@ -88,7 +89,9 @@ export function createWedgeRenderPlan(
 
     while (index < children.length) {
       const child = children[index]!;
-      const childDepthForDisplay = collapseEnabled ? (child.collapsedDepth ?? child.depth) : child.depth;
+      const childDepthForDisplay = collapseEnabled
+        ? (child.collapsedDepth ?? child.depth)
+        : child.depth;
 
       if (childDepthForDisplay > maxDepth) {
         index += 1;
@@ -103,13 +106,17 @@ export function createWedgeRenderPlan(
         minVisibleWidth,
       );
       const keyedTopLevelHidden =
-        hidden && childDepthForDisplay === 1 && !(collapseEnabled && (child.collapseEligible ?? false));
+        hidden &&
+        childDepthForDisplay === 1 &&
+        !(collapseEnabled && (child.collapseEligible ?? false));
 
       if (hidden && !keyedTopLevelHidden) {
         let runEnd = index;
         while (runEnd + 1 < children.length) {
           const next = children[runEnd + 1]!;
-          const nextDepthForDisplay = collapseEnabled ? (next.collapsedDepth ?? next.depth) : next.depth;
+          const nextDepthForDisplay = collapseEnabled
+            ? (next.collapsedDepth ?? next.depth)
+            : next.depth;
           const nextHidden = shouldHideChild(
             nextDepthForDisplay,
             next,
@@ -127,12 +134,16 @@ export function createWedgeRenderPlan(
 
         const run = children.slice(index, runEnd + 1);
         const first = run[0]!;
-        const firstDepthForDisplay = collapseEnabled ? (first.collapsedDepth ?? first.depth) : first.depth;
+        const firstDepthForDisplay = collapseEnabled
+          ? (first.collapsedDepth ?? first.depth)
+          : first.depth;
         const last = run[run.length - 1]!;
         const runParentPath = first.path.slice(0, -1);
-        const interactionPath = runParentPath.length > 0 ? runParentPath : first.path;
-        const primaryColorNode = run.find((node) => !isUnclassifiedNodeName(node.name)) ?? first;
-        const groupedColorPath = primaryColorNode.path;
+        const interactionPath = resolveNonEmptyAncestorPath(
+          runParentPath.length > 0 ? runParentPath : first.path,
+          nodesByPath,
+        );
+        const groupedColorPath = interactionPath;
         const hiddenCount = run.length;
         const groupedMagnitude = run.reduce((sum, node) => sum + node.magnitude, 0);
         const groupIndex = hiddenGroupIndexes.get(parentKey) ?? 0;
@@ -150,6 +161,7 @@ export function createWedgeRenderPlan(
             endAngle: last.endAngle,
           },
           isGroupedHidden: true,
+          isKeyed: false,
           hiddenCount,
           key: `${parentKey}/[${hiddenCount}-more-${groupIndex}]`,
           colorPath: groupedColorPath,
@@ -170,6 +182,7 @@ export function createWedgeRenderPlan(
       const childEntry: WedgeRenderNode = {
         node: displayNode,
         isGroupedHidden: false,
+        isKeyed: keyedTopLevelHidden,
         hiddenCount: 0,
         key: pathKey(child.path),
         colorPath: child.path,
@@ -207,6 +220,7 @@ export function createWedgeRenderPlan(
                 endAngle: residualEnd,
               },
               isGroupedHidden: false,
+              isKeyed: false,
               hiddenCount: 0,
               key: `${parentKey}/[other-${Math.round(residualStart * 1e9)}]`,
               colorPath: parentPath,
@@ -226,6 +240,20 @@ export function createWedgeRenderPlan(
   return {
     visibleNodes: collectChildren(rootPath),
   };
+}
+
+function resolveNonEmptyAncestorPath(
+  path: string[],
+  nodesByPath: Map<string, ChartLayoutNode>,
+): string[] {
+  for (let length = path.length; length >= 1; length -= 1) {
+    const candidate = path.slice(0, length);
+    const node = nodesByPath.get(pathKey(candidate));
+    if (node && Number.isFinite(node.magnitude) && node.magnitude > 0) {
+      return candidate;
+    }
+  }
+  return path;
 }
 
 function shouldHideChild(
