@@ -59,11 +59,21 @@
   font-weight: 700;
   padding: 0;
   text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .title-link-button:hover {
   color: #1f6f4d;
   text-decoration: underline;
+}
+
+.title-logo-mark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: block;
 }
 
 .row {
