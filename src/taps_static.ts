@@ -177,6 +177,7 @@ export function registerStaticChartTaps(payload: StaticChartPayload): void {
     deleteProject: async () => {},
     renameProject: async () => {},
     exportProjectArchive: async () => {},
+    exportProjectDatasetsZip: async () => {},
     importProjectArchive: async (): Promise<ProjectImportReport> => ({
       mode: "archive",
       projectName: project.name,
@@ -185,7 +186,12 @@ export function registerStaticChartTaps(payload: StaticChartPayload): void {
     }),
     renameDataset: async () => {},
     openProject: async () => {},
-    parsePreview: async () => {},
+    parsePreview: async () => ({
+      canApply: false,
+      fatalError: "Import is unavailable in static mode.",
+      warnings: [],
+      preview: null,
+    }),
     applyImport: async () => {},
     openChart: (datasetId) => {
       const allDatasets = datasetsTap.get() ?? [];

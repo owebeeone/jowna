@@ -69,6 +69,7 @@ import { grok } from "./runtime_graph";
 import { createIndexedDbStorageGateway } from "./storage/indexeddb";
 import { SunburstChartRenderer } from "./features/chart";
 import {
+  createProjectDatasetsZipBlob,
   createProjectArchive,
   looksLikeKronaHtml,
   materializeParsedKronaHtmlProject,
@@ -77,6 +78,7 @@ import {
   parseProjectArchive,
   PROJECT_ARCHIVE_MIME_TYPE,
   serializeProjectArchive,
+  toDatasetsZipFileName,
   toProjectArchiveFileName,
 } from "./features/file-manager";
 
@@ -393,6 +395,30 @@ export function registerJownaTaps(): void {
       );
     },
 
+    exportProjectDatasetsZip: async (projectId) => {
+      const project = await storage.projects.getProject(projectId);
+      if (!project) {
+        throw new Error(`Project '${projectId}' no longer exists.`);
+      }
+
+      const projectDatasets = await storage.datasets.listByProject(projectId);
+      const datasetById = new Map(projectDatasets.map((dataset) => [dataset.id, dataset]));
+      const orderedDatasetIds = uniqueIds([
+        ...project.datasetIds,
+        ...projectDatasets.map((dataset) => dataset.id),
+      ]);
+      const orderedDatasets = orderedDatasetIds
+        .map((datasetId) => datasetById.get(datasetId))
+        .filter((dataset): dataset is Dataset => Boolean(dataset));
+
+      const blob = createProjectDatasetsZipBlob({
+        project,
+        datasets: orderedDatasets,
+        exportedAt: nowIso(),
+      });
+      downloadBlobFile(toDatasetsZipFileName(project.name), blob);
+    },
+
     importProjectArchive: async (file) => {
       const raw = await file.text();
 
@@ -506,7 +532,12 @@ export function registerJownaTaps(): void {
         importPreviewTap.set(null);
         importWarningsTap.set([]);
         importCanApplyTap.set(false);
-        return;
+        return {
+          canApply: false,
+          fatalError: "Select a source file or URL before parsing.",
+          warnings: [],
+          preview: null,
+        };
       }
 
       importLoadingTap.set(true);
@@ -529,7 +560,14 @@ export function registerJownaTaps(): void {
           (result.tree.children?.length ?? 0) > 0;
 
         importCanApplyTap.set(hasUsableData);
-        importFatalTap.set(hasUsableData ? null : "No usable rows found.");
+        const fatalError = hasUsableData ? null : "No usable rows found.";
+        importFatalTap.set(fatalError);
+        return {
+          canApply: hasUsableData,
+          fatalError,
+          warnings: result.warnings,
+          preview: result.preview,
+        };
       } catch (error) {
         importDetectedFormatTap.set(null);
         importRowsTap.set([]);
@@ -537,13 +575,20 @@ export function registerJownaTaps(): void {
         importPreviewTap.set(null);
         importWarningsTap.set([]);
         importCanApplyTap.set(false);
-        importFatalTap.set((error as Error).message);
+        const fatalError = (error as Error).message;
+        importFatalTap.set(fatalError);
+        return {
+          canApply: false,
+          fatalError,
+          warnings: [],
+          preview: null,
+        };
       } finally {
         importLoadingTap.set(false);
       }
     },
 
-    applyImport: async (datasetName) => {
+    applyImport: async (datasetName, options) => {
       const projectId = activeProjectIdTap.get();
       const tree = importTreeTap.get();
       const rows = importRowsTap.get() ?? [];
@@ -589,9 +634,15 @@ export function registerJownaTaps(): void {
 
       await storage.projects.saveProject(nextProject);
       await actions.refreshProjects();
-      await actions.openChart(dataset.id);
+      const shouldOpenChart = options?.openChart ?? true;
+      if (shouldOpenChart) {
+        await actions.openChart(dataset.id);
+      }
       importDatasetNameTap.set(name);
-      importPopoverOpenTap.set(false);
+      const shouldClosePopover = options?.closePopover ?? true;
+      if (shouldClosePopover) {
+        importPopoverOpenTap.set(false);
+      }
     },
 
     openChart: (datasetId) => {
@@ -856,6 +907,10 @@ function toErrorMessage(error: unknown): string {
 
 function downloadTextFile(fileName: string, content: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType });
+  downloadBlobFile(fileName, blob);
+}
+
+function downloadBlobFile(fileName: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
 
   const anchor = document.createElement("a");
