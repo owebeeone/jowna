@@ -69,6 +69,7 @@ import { grok } from "./runtime_graph";
 import { createIndexedDbStorageGateway } from "./storage/indexeddb";
 import { SunburstChartRenderer } from "./features/chart";
 import {
+  createProjectDatasetsZipBlob,
   createProjectArchive,
   looksLikeKronaHtml,
   materializeParsedKronaHtmlProject,
@@ -77,6 +78,7 @@ import {
   parseProjectArchive,
   PROJECT_ARCHIVE_MIME_TYPE,
   serializeProjectArchive,
+  toDatasetsZipFileName,
   toProjectArchiveFileName,
 } from "./features/file-manager";
 
@@ -391,6 +393,30 @@ export function registerJownaTaps(): void {
         serialized,
         PROJECT_ARCHIVE_MIME_TYPE,
       );
+    },
+
+    exportProjectDatasetsZip: async (projectId) => {
+      const project = await storage.projects.getProject(projectId);
+      if (!project) {
+        throw new Error(`Project '${projectId}' no longer exists.`);
+      }
+
+      const projectDatasets = await storage.datasets.listByProject(projectId);
+      const datasetById = new Map(projectDatasets.map((dataset) => [dataset.id, dataset]));
+      const orderedDatasetIds = uniqueIds([
+        ...project.datasetIds,
+        ...projectDatasets.map((dataset) => dataset.id),
+      ]);
+      const orderedDatasets = orderedDatasetIds
+        .map((datasetId) => datasetById.get(datasetId))
+        .filter((dataset): dataset is Dataset => Boolean(dataset));
+
+      const blob = createProjectDatasetsZipBlob({
+        project,
+        datasets: orderedDatasets,
+        exportedAt: nowIso(),
+      });
+      downloadBlobFile(toDatasetsZipFileName(project.name), blob);
     },
 
     importProjectArchive: async (file) => {
@@ -881,6 +907,10 @@ function toErrorMessage(error: unknown): string {
 
 function downloadTextFile(fileName: string, content: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType });
+  downloadBlobFile(fileName, blob);
+}
+
+function downloadBlobFile(fileName: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
 
   const anchor = document.createElement("a");

@@ -177,6 +177,7 @@ export function registerStaticChartTaps(payload: StaticChartPayload): void {
     deleteProject: async () => {},
     renameProject: async () => {},
     exportProjectArchive: async () => {},
+    exportProjectDatasetsZip: async () => {},
     importProjectArchive: async (): Promise<ProjectImportReport> => ({
       mode: "archive",
       projectName: project.name,

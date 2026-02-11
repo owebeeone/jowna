@@ -142,6 +142,23 @@ export function SelectionScreen() {
     }
   };
 
+  const onDownloadProjectZip = async (projectId: string, projectName: string) => {
+    if (!actions) {
+      return;
+    }
+
+    try {
+      await actions.exportProjectDatasetsZip(projectId);
+      setProjectTransferNotice(`Downloaded dataset TSV zip for '${projectName}'.`);
+      setProjectTransferWarnings([]);
+    } catch (error) {
+      console.warn("Failed exporting dataset zip", error);
+      const message = error instanceof Error ? error.message : "Unknown zip export error.";
+      setProjectTransferNotice(`Warning: ${message}`);
+      setProjectTransferWarnings([]);
+    }
+  };
+
   const onUploadProjectClick = () => {
     projectArchiveInputRef.current?.click();
   };
@@ -607,7 +624,17 @@ export function SelectionScreen() {
                           void onDownloadProject(project.id, project.name);
                         }}
                       >
-                        Download Jowna
+                        Download Project
+                      </button>
+                      <button
+                        className="ghost"
+                        title="Download all project datasets as TSV files in a zip."
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void onDownloadProjectZip(project.id, project.name);
+                        }}
+                      >
+                        Download Zip
                       </button>
                       <button
                         className="danger"
