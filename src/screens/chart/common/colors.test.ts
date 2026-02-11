@@ -147,13 +147,13 @@ describe("buildKronaColorMap", () => {
       nodes,
     });
 
-    expect(colors.get("Root/A")).toBe("rgb(204,101,101)");
-    expect(colors.get("Root/B")).toBe("rgb(193,204,101)");
-    expect(colors.get("Root/C")).toBe("rgb(101,204,116)");
-    expect(colors.get("Root/D")).toBe("rgb(101,194,204)");
-    expect(colors.get("Root/E")).toBe("rgb(101,106,204)");
-    expect(colors.get("Root/F")).toBe("rgb(174,101,204)");
-    expect(colors.get("Root/G")).toBe("rgb(204,101,170)");
+    expect(colors.get("Root/A")).toBe("rgb(216,140,140)");
+    expect(colors.get("Root/B")).toBe("rgb(208,216,140)");
+    expect(colors.get("Root/C")).toBe("rgb(140,216,151)");
+    expect(colors.get("Root/D")).toBe("rgb(140,209,216)");
+    expect(colors.get("Root/E")).toBe("rgb(140,143,216)");
+    expect(colors.get("Root/F")).toBe("rgb(194,140,216)");
+    expect(colors.get("Root/G")).toBe("rgb(216,140,191)");
   });
 });
 

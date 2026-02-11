@@ -18,24 +18,30 @@ export function arcPath(
     return "";
   }
 
-  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+  let adjustedEndAngle = endAngle;
+  if (Math.abs(endAngle - (startAngle + Math.PI * 2)) < 1e-9) {
+    adjustedEndAngle -= 0.1 / Math.max(outerRadius, 1);
+  }
+
+  const largeArc = adjustedEndAngle - startAngle > Math.PI ? 1 : 0;
+  const innerStart = polarPoint(Math.max(0, innerRadius), startAngle);
   const outerStart = polarPoint(outerRadius, startAngle);
-  const outerEnd = polarPoint(outerRadius, endAngle);
+  const outerEnd = polarPoint(outerRadius, adjustedEndAngle);
+  const innerEnd = polarPoint(Math.max(0, innerRadius), adjustedEndAngle);
 
   if (innerRadius <= 0) {
     return [
-      `M ${outerStart.x} ${outerStart.y}`,
+      `M ${innerStart.x} ${innerStart.y}`,
+      `L ${outerStart.x} ${outerStart.y}`,
       `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
       "L 0 0",
       "Z",
     ].join(" ");
   }
 
-  const innerEnd = polarPoint(innerRadius, endAngle);
-  const innerStart = polarPoint(innerRadius, startAngle);
-
   return [
-    `M ${outerStart.x} ${outerStart.y}`,
+    `M ${innerStart.x} ${innerStart.y}`,
+    `L ${outerStart.x} ${outerStart.y}`,
     `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
     `L ${innerEnd.x} ${innerEnd.y}`,
     `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
@@ -46,13 +52,21 @@ export function arcPath(
 export function createRadiusScale(
   maxDepth: number,
   outerRadius: number,
+  fontSizePx = 11,
 ): (depth: number) => number {
+  if (maxDepth <= 0 || outerRadius <= 0) {
+    return () => 0;
+  }
+
+  const normalizedRadii = buildCompressedRadii(maxDepth, outerRadius, fontSizePx);
   return (depth) => {
-    if (depth <= 0 || maxDepth <= 0) {
-      return 0;
+    if (depth <= 0) {
+      return normalizedRadii[0] * outerRadius;
     }
-    const normalized = depth / maxDepth;
-    return Math.pow(normalized, 0.86) * outerRadius;
+    if (depth >= maxDepth) {
+      return outerRadius;
+    }
+    return normalizedRadii[depth] * outerRadius;
   };
 }
 
@@ -78,22 +92,81 @@ export function normalizeDegrees(angle: number): number {
 }
 
 export function computeLayoutDataMaxDepth(layout: ChartLayoutResult | null): number {
+  return computeLayoutDataMaxDepthWithMode(layout, false);
+}
+
+export function computeLayoutDataMaxDepthWithMode(
+  layout: ChartLayoutResult | null,
+  collapseEnabled: boolean,
+): number {
   if (!layout || layout.nodes.length === 0) {
     return 0;
   }
 
   let maxDepth = 0;
   for (const node of layout.nodes) {
+    const depth = collapseEnabled ? (node.collapsedDepth ?? node.depth) : node.depth;
     if (node.depth <= 0 || isUnclassifiedNodeName(node.name)) {
       continue;
     }
-    if (node.depth > maxDepth) {
-      maxDepth = node.depth;
+    if (depth > maxDepth) {
+      maxDepth = depth;
     }
   }
 
   if (maxDepth > 0) {
     return maxDepth;
   }
-  return layout.nodes.reduce((max, node) => Math.max(max, node.depth), 0);
+  return layout.nodes.reduce((max, node) => {
+    const depth = collapseEnabled ? (node.collapsedDepth ?? node.depth) : node.depth;
+    return Math.max(max, depth);
+  }, 0);
+}
+
+function buildCompressedRadii(maxDepth: number, outerRadius: number, fontSizePx: number): number[] {
+  const minRadiusInner = Math.min(0.25, (fontSizePx * 8) / outerRadius);
+  const minRadiusFirst = Math.min(0.15, (fontSizePx * 6) / outerRadius);
+  const minRadiusOuter = Math.min(0.15, (fontSizePx * 5) / outerRadius);
+  const radii = new Array<number>(maxDepth).fill(minRadiusInner);
+
+  let offset = 0;
+  while (offset < 10) {
+    const preview = lerp(
+      Math.atan(offset + 2),
+      Math.atan(offset + 1),
+      Math.atan(maxDepth + offset - 1),
+      minRadiusInner,
+      1 - minRadiusOuter,
+    );
+    if (preview - minRadiusInner <= minRadiusFirst) {
+      break;
+    }
+    offset += 1;
+  }
+
+  offset -= 1;
+  for (let index = 1; index < maxDepth; index += 1) {
+    radii[index] = lerp(
+      Math.atan(index + offset),
+      Math.atan(offset),
+      Math.atan(maxDepth + offset - 1),
+      minRadiusInner,
+      1 - minRadiusOuter,
+    );
+  }
+
+  return radii;
+}
+
+function lerp(
+  value: number,
+  rangeStart: number,
+  rangeEnd: number,
+  outputStart: number,
+  outputEnd: number,
+): number {
+  if (rangeEnd === rangeStart) {
+    return outputStart;
+  }
+  return outputStart + ((value - rangeStart) / (rangeEnd - rangeStart)) * (outputEnd - outputStart);
 }

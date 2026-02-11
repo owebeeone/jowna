@@ -1,7 +1,11 @@
 import {
   KRONA_UNCLASSIFIED_COLOR,
   arcPath,
+  createKeyCallouts,
   createHoverLabelTooltip,
+  formatKronaPercentageFromFraction,
+  formatKronaRounded,
+  toKronaDisplayName,
   createWedgeLabel,
   isUnclassifiedNodeName,
   pathEquals,
@@ -11,6 +15,81 @@ import { useChartScreenContext } from "../context";
 
 export function ChartCanvasPanel() {
   const model = useChartScreenContext();
+  const viewWidth = 620;
+  const viewHeight = 620;
+  const centerX = viewWidth / 2;
+  const centerY = viewHeight / 2;
+
+  const resolveEntryFill = (entry: (typeof model.wedgeRenderPlan.visibleNodes)[number]) => {
+    if (isUnclassifiedNodeName(entry.node.name)) {
+      return KRONA_UNCLASSIFIED_COLOR;
+    }
+    return (
+      entry.fillOverride ??
+      resolveNodeFillColor(
+        model.kronaColors,
+        [entry.colorPath, entry.interactionPath, entry.node.path],
+        KRONA_UNCLASSIFIED_COLOR,
+      )
+    );
+  };
+
+  const fillByEntryKey = new Map(
+    model.wedgeRenderPlan.visibleNodes.map((entry) => [entry.key, resolveEntryFill(entry)]),
+  );
+  const keyCallouts = createKeyCallouts({
+    entries: model.wedgeRenderPlan.visibleNodes
+      .filter((entry) => entry.isKeyed)
+      .map((entry) => ({
+        key: entry.key,
+        name: entry.node.name,
+        magnitude: entry.node.magnitude,
+        startAngle: entry.node.startAngle,
+        endAngle: entry.node.endAngle,
+        fill: fillByEntryKey.get(entry.key) ?? KRONA_UNCLASSIFIED_COLOR,
+        interactionPath: entry.interactionPath,
+      })),
+    totalMagnitude: model.chartLayout?.totalMagnitude ?? 0,
+    width: viewWidth,
+    height: viewHeight,
+    centerX,
+    centerY,
+    radius: model.radiusScale(model.displayDepth),
+    fontSizePx: model.labelFontSize,
+  });
+  const visibleKeyCallouts = model.showKeyCallouts ? keyCallouts : [];
+  const labelEntries = model.wedgeRenderPlan.visibleNodes
+    .map((entry) => {
+      const node = entry.node;
+      const interactionPath = entry.interactionPath;
+      const innerRadius = model.radiusScale(Math.max(0, node.depth - 1));
+      const outerRadius = model.radiusScale(entry.labelOuterDepth);
+      const label = createWedgeLabel(
+        node,
+        innerRadius,
+        outerRadius,
+        model.displayDepth,
+        entry.labelOuterDepth,
+        model.labelFontSize,
+      );
+      if (entry.isKeyed || !label) {
+        return null;
+      }
+      return {
+        entry,
+        interactionPath,
+        label,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  const hoveredTooltipEntry = labelEntries.find(
+    (entry) =>
+      Boolean(model.hoverPath) &&
+      pathEquals(entry.interactionPath, model.hoverPath ?? []),
+  );
+  const hoveredTooltip = hoveredTooltipEntry
+    ? createHoverLabelTooltip(hoveredTooltipEntry.label, model.labelFontSize)
+    : null;
 
   return (
     <section className="chart-surface chart-surface-krona" style={model.chartSurfaceStyle}>
@@ -21,7 +100,7 @@ export function ChartCanvasPanel() {
           <svg
             ref={model.chartSvgRef}
             className="chart-canvas chart-canvas-krona"
-            viewBox="0 0 620 620"
+            viewBox={`0 0 ${viewWidth} ${viewHeight}`}
             role="img"
             style={model.chartCanvasStyle}
           >
@@ -76,17 +155,11 @@ export function ChartCanvasPanel() {
                   isInteractive && model.resolvedFocusPath
                     ? pathEquals(interactionPath, model.resolvedFocusPath)
                     : false;
-                const fill = isUnclassifiedNodeName(node.name)
-                  ? KRONA_UNCLASSIFIED_COLOR
-                  : resolveNodeFillColor(
-                      model.kronaColors,
-                      [entry.colorPath, interactionPath, node.path],
-                      KRONA_UNCLASSIFIED_COLOR,
-                    );
+                const fill = fillByEntryKey.get(entry.key) ?? KRONA_UNCLASSIFIED_COLOR;
                 const wedgeKey = entry.key;
                 const titleText = entry.isGroupedHidden
                   ? `${entry.hiddenCount} more`
-                  : `${node.path.join(" / ")}: ${node.magnitude.toLocaleString()}`;
+                  : `${toKronaDisplayName(node.name)}   ${formatKronaPercentageFromFraction((model.chartLayout?.totalMagnitude ?? 0) > 0 ? node.magnitude / (model.chartLayout?.totalMagnitude ?? 1) : 0)}%`;
 
                 return (
                   <g key={wedgeKey}>
@@ -116,7 +189,12 @@ export function ChartCanvasPanel() {
                         isInteractive ? () => model.actions?.hoverPath(null) : undefined
                       }
                       onClick={
-                        isInteractive ? () => model.actions?.focusPath(interactionPath) : undefined
+                        isInteractive
+                          ? (event) => {
+                              model.actions?.focusPath(interactionPath);
+                              event.currentTarget.blur?.();
+                            }
+                          : undefined
                       }
                       onKeyDown={
                         isInteractive
@@ -144,63 +222,9 @@ export function ChartCanvasPanel() {
                 );
               })}
 
-              {model.wedgeRenderPlan.visibleNodes.map((entry) => {
-                const node = entry.node;
-                const interactionPath = entry.interactionPath;
-                const innerRadius = model.radiusScale(Math.max(0, node.depth - 1));
-                const outerRadius = model.radiusScale(entry.labelOuterDepth);
-                const label = createWedgeLabel(
-                  node,
-                  innerRadius,
-                  outerRadius,
-                  model.maxDepth,
-                  entry.labelOuterDepth,
-                  model.labelFontSize,
-                );
-                if (!label) {
-                  return null;
-                }
-
-                const showTooltip =
-                  Boolean(model.hoverPath) &&
-                  pathEquals(interactionPath, model.hoverPath ?? []) &&
-                  label.isTruncated;
-                const tooltip = showTooltip
-                  ? createHoverLabelTooltip(label, model.labelFontSize)
-                  : null;
+              {labelEntries.map(({ entry, label }) => {
                 return (
                   <g key={`label-${entry.key}`}>
-                    {tooltip && (
-                      <g className="chart-label-tooltip" pointerEvents="none">
-                        <rect
-                          className="chart-label-tooltip-box"
-                          x={tooltip.x}
-                          y={tooltip.y}
-                          width={tooltip.width}
-                          height={tooltip.height}
-                          rx={7}
-                          ry={7}
-                          fill="#ffffff"
-                          stroke={model.resolvedChartSettings.wedgeStrokeColor}
-                          strokeWidth={
-                            Math.max(0.4, model.resolvedChartSettings.wedgeStrokeWidth) + 0.5
-                          }
-                        />
-                        <text
-                          className="chart-label-tooltip-text"
-                          x={tooltip.textX}
-                          y={tooltip.textY}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          style={{
-                            fontFamily: model.resolvedChartSettings.fontFamily,
-                            fontSize: `${model.labelFontSize}px`,
-                          }}
-                        >
-                          {label.fullText}
-                        </text>
-                      </g>
-                    )}
                     <text
                       className="chart-wedge-label"
                       x={label.x}
@@ -234,12 +258,135 @@ export function ChartCanvasPanel() {
                   "Root"}
               </text>
               <text x={0} y={2} textAnchor="middle" className="chart-center-metric">
-                {model.activeMagnitude.toLocaleString()}
+                {formatKronaRounded(model.activeMagnitude)}
               </text>
               <text x={0} y={22} textAnchor="middle" className="chart-center-sub">
-                {model.activeShare.toFixed(1)}% of view
+                {formatKronaPercentageFromFraction((model.chartLayout?.totalMagnitude ?? 0) > 0 ? model.activeMagnitude / (model.chartLayout?.totalMagnitude ?? 1) : 0)}
+                %
               </text>
             </g>
+            {visibleKeyCallouts.map((callout) => {
+              const isInteractive =
+                callout.interactionPath.length > 0 &&
+                !isUnclassifiedNodeName(
+                  callout.interactionPath[callout.interactionPath.length - 1] ?? "",
+                );
+              const isActive =
+                isInteractive && model.activePath
+                  ? pathEquals(callout.interactionPath, model.activePath)
+                  : false;
+              const isFocused =
+                isInteractive && model.resolvedFocusPath
+                  ? pathEquals(callout.interactionPath, model.resolvedFocusPath)
+                  : false;
+
+              return (
+                <g
+                  key={`key-callout-${callout.key}`}
+                  className={`chart-key-callout ${isActive ? "is-active" : ""} ${isFocused ? "is-focus" : ""}`}
+                  role={isInteractive ? "button" : undefined}
+                  tabIndex={isInteractive ? 0 : undefined}
+                  onMouseEnter={
+                    isInteractive
+                      ? () => model.actions?.hoverPath(callout.interactionPath)
+                      : undefined
+                  }
+                  onMouseLeave={isInteractive ? () => model.actions?.hoverPath(null) : undefined}
+                  onClick={
+                    isInteractive
+                      ? (event) => {
+                          model.actions?.focusPath(callout.interactionPath);
+                          event.currentTarget.blur?.();
+                        }
+                      : undefined
+                  }
+                  onKeyDown={
+                    isInteractive
+                      ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            model.actions?.focusPath(callout.interactionPath);
+                          }
+                        }
+                      : undefined
+                  }
+                >
+                  <path
+                    className="chart-key-line"
+                    d={callout.linePath}
+                    strokeWidth={callout.lineStrokeWidth}
+                  />
+                  <rect
+                    className="chart-key-text-box"
+                    x={callout.textBoxX}
+                    y={callout.textBoxY}
+                    width={callout.textBoxWidth}
+                    height={callout.textBoxHeight}
+                    rx={Math.max(4, model.labelFontSize * 0.42)}
+                    ry={Math.max(4, model.labelFontSize * 0.42)}
+                    fill="#ffffff"
+                    stroke={model.resolvedChartSettings.wedgeStrokeColor}
+                    strokeWidth={Math.max(0.4, model.resolvedChartSettings.wedgeStrokeWidth) + 0.5}
+                  />
+                  <text
+                    className="chart-key-text"
+                    x={callout.textX}
+                    y={callout.textY}
+                    textAnchor={callout.textAnchor}
+                    dominantBaseline="middle"
+                    style={{
+                      fontFamily: model.resolvedChartSettings.fontFamily,
+                      fontSize: `${model.labelFontSize}px`,
+                    }}
+                  >
+                    {callout.text}
+                  </text>
+                  <rect
+                    className="chart-key-color-box"
+                    x={callout.colorBoxX}
+                    y={callout.colorBoxY}
+                    width={callout.colorBoxSize}
+                    height={callout.colorBoxSize}
+                    fill={callout.fill}
+                    stroke={model.resolvedChartSettings.wedgeStrokeColor}
+                    strokeWidth={Math.max(0.4, model.resolvedChartSettings.wedgeStrokeWidth)}
+                  />
+                </g>
+              );
+            })}
+            {hoveredTooltip && hoveredTooltipEntry && (
+              <g
+                className="chart-label-tooltip"
+                pointerEvents="none"
+                transform={`translate(${centerX} ${centerY})`}
+              >
+                <rect
+                  className="chart-label-tooltip-box"
+                  x={hoveredTooltip.x}
+                  y={hoveredTooltip.y}
+                  width={hoveredTooltip.width}
+                  height={hoveredTooltip.height}
+                  rx={7}
+                  ry={7}
+                  fill="#ffffff"
+                  stroke={model.resolvedChartSettings.wedgeStrokeColor}
+                  strokeWidth={Math.max(0.4, model.resolvedChartSettings.wedgeStrokeWidth) + 0.5}
+                />
+                <text
+                  className="chart-label-tooltip-text"
+                  x={hoveredTooltip.textX}
+                  y={hoveredTooltip.textY}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  style={{
+                    fontFamily: model.resolvedChartSettings.fontFamily,
+                    fontSize: `${model.labelFontSize}px`,
+                  }}
+                >
+                  {hoveredTooltipEntry.label.fullText}
+                </text>
+              </g>
+            )}
           </svg>
           <div className="chart-hint muted">
             Click a segment to zoom. Hover to inspect. Click center to move up.

@@ -1,5 +1,6 @@
 import type { ChartLayoutNode } from "../../../features/chart";
-import { normalizeDegrees, polarPoint } from "./geometry";
+import { normalizeDegrees } from "./geometry";
+import { ellipsizeKronaLabel, toKronaDisplayName } from "./text";
 
 export interface WedgeLabel {
   text: string;
@@ -47,7 +48,7 @@ export function createWedgeLabel(
   }
 
   const midAngle = (node.startAngle + node.endAngle) / 2;
-  const point = polarPoint(radius, midAngle);
+  const kronaAngle = normalizeRadians(midAngle + Math.PI / 2);
 
   const approximateCharWidth = Math.max(4, fontSizePx * 0.58);
   const availableTextLength = isOuterRing
@@ -57,21 +58,46 @@ export function createWedgeLabel(
     isOuterRing ? 4 : 6,
     Math.floor(availableTextLength / approximateCharWidth),
   );
-  const isTruncated = node.name.length > maxChars;
-  const text = ellipsize(node.name, maxChars);
-  const baseRotation = isOuterRing ? (midAngle * 180) / Math.PI - 90 : (midAngle * 180) / Math.PI;
-  const normalizedRotation = normalizeDegrees(baseRotation);
-  const flip = normalizedRotation > 90 || normalizedRotation < -90;
-  const rotate = flip ? normalizedRotation + 180 : normalizedRotation;
+  const displayName = toKronaDisplayName(node.name);
+  const isTruncated = displayName.length > maxChars;
+  const text = ellipsizeKronaLabel(displayName, maxChars);
+
+  let angle = kronaAngle;
+  let adjustedRadius = radius;
+  let anchor: WedgeLabel["anchor"] = isOuterRing ? "start" : "middle";
+
+  if (isOuterRing) {
+    const flip = angle < (Math.PI * 3) / 2;
+    if (flip) {
+      angle -= Math.PI;
+      adjustedRadius = -adjustedRadius;
+      anchor = "end";
+    } else {
+      anchor = "start";
+    }
+  } else {
+    const flip = angle < Math.PI || angle > Math.PI * 2;
+    if (flip) {
+      angle -= Math.PI;
+      adjustedRadius = -adjustedRadius;
+    }
+    angle += Math.PI / 2;
+    anchor = "middle";
+  }
+
+  const point = isOuterRing
+    ? rotatePoint(adjustedRadius, 0, angle)
+    : rotatePoint(0, -adjustedRadius, angle);
+  const rotate = normalizeDegrees((angle * 180) / Math.PI);
 
   return {
     text,
-    fullText: node.name,
+    fullText: displayName,
     isTruncated,
     x: point.x,
     y: point.y,
     rotate,
-    anchor: isOuterRing ? (flip ? "end" : "start") : "middle",
+    anchor,
   };
 }
 
@@ -94,9 +120,20 @@ export function createHoverLabelTooltip(label: WedgeLabel, fontSizePx: number): 
   };
 }
 
-function ellipsize(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value;
+function normalizeRadians(angle: number): number {
+  let normalized = angle;
+  while (normalized < 0) {
+    normalized += Math.PI * 2;
   }
-  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+  while (normalized >= Math.PI * 2) {
+    normalized -= Math.PI * 2;
+  }
+  return normalized;
+}
+
+function rotatePoint(x: number, y: number, angle: number): { x: number; y: number } {
+  return {
+    x: x * Math.cos(angle) - y * Math.sin(angle),
+    y: x * Math.sin(angle) + y * Math.cos(angle),
+  };
 }

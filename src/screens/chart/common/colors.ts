@@ -6,10 +6,13 @@ import {
   KRONA_UNCLASSIFIED_COLOR,
 } from "./constants";
 import { isUnclassifiedNodeName } from "./classification";
-import { computeLayoutDataMaxDepth } from "./geometry";
+import { computeLayoutDataMaxDepthWithMode } from "./geometry";
 import { pathKey } from "./path";
 
-export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string, string> {
+export function buildKronaColorMap(
+  layout: ChartLayoutResult | null,
+  collapseEnabled = false,
+): Map<string, string> {
   const colors = new Map<string, string>();
   if (!layout || layout.nodes.length === 0) {
     return colors;
@@ -46,23 +49,30 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
     });
   });
 
-  const maxDepth = computeLayoutDataMaxDepth(layout);
+  const maxDepth = computeLayoutDataMaxDepthWithMode(layout, collapseEnabled) + 1;
   const depthNormalizer = maxDepth > 8 ? 8 : Math.max(maxDepth, 1);
   const lightnessFactor = (KRONA_LIGHTNESS_MAX - KRONA_LIGHTNESS_BASE) / depthNormalizer;
 
-  const assignColor = (node: ChartLayoutNode, hueMin: number, hueMax: number): void => {
+  const assignColor = (
+    node: ChartLayoutNode,
+    hueMin: number,
+    hueMax: number,
+    baseMagnitude: number,
+  ): void => {
     let boundedHueMax = hueMax;
     if (boundedHueMax - hueMin > 1 / 12) {
       boundedHueMax = hueMin + 1 / 12;
     }
 
-    if (node.depth > 0) {
+    const nodeDepth = collapseEnabled ? (node.collapsedDepth ?? node.depth) : node.depth;
+    const relativeDepth = nodeDepth + 1;
+    if (nodeDepth > 0) {
       if (node.magnitude <= 0 || isUnclassifiedNodeName(node.name)) {
         colors.set(pathKey(node.path), KRONA_UNCLASSIFIED_COLOR);
       } else {
         const lightness = Math.min(
           KRONA_LIGHTNESS_MAX,
-          KRONA_LIGHTNESS_BASE + (node.depth - 1) * lightnessFactor,
+          KRONA_LIGHTNESS_BASE + (relativeDepth - 1) * lightnessFactor,
         );
         const rgb = hslToRgb(hueMin, KRONA_SATURATION, lightness);
         colors.set(pathKey(node.path), rgbText(rgb.r, rgb.g, rgb.b));
@@ -74,6 +84,7 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
       return;
     }
 
+    let childBaseMagnitude = baseMagnitude;
     for (let index = 0; index < children.length; index += 1) {
       const child = children[index]!;
       let childHueMin: number;
@@ -87,22 +98,32 @@ export function buildKronaColorMap(layout: ChartLayoutResult | null): Map<string
           childHueMin = index / children.length;
           childHueMax = (index + 0.55) / children.length;
         }
-      } else {
-        childHueMin = lerp(child.startAngle, node.startAngle, node.endAngle, hueMin, boundedHueMax);
-        childHueMax = lerp(
-          child.startAngle + (child.endAngle - child.startAngle) * 0.99,
-          node.startAngle,
-          node.endAngle,
+      } else if (node.magnitude > 0) {
+        childHueMin = lerp(
+          childBaseMagnitude,
+          baseMagnitude,
+          baseMagnitude + node.magnitude,
           hueMin,
           boundedHueMax,
         );
+        childHueMax = lerp(
+          childBaseMagnitude + child.magnitude * 0.99,
+          baseMagnitude,
+          baseMagnitude + node.magnitude,
+          hueMin,
+          boundedHueMax,
+        );
+      } else {
+        childHueMin = hueMin;
+        childHueMax = boundedHueMax;
       }
 
-      assignColor(child, childHueMin, childHueMax);
+      assignColor(child, childHueMin, childHueMax, childBaseMagnitude);
+      childBaseMagnitude += Math.max(0, child.magnitude);
     }
   };
 
-  assignColor(root, 0, 1);
+  assignColor(root, 0, 1, 0);
   return colors;
 }
 

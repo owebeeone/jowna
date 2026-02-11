@@ -36,6 +36,11 @@ export function ChartToolbar() {
       </div>
 
       <div className="row" style={{ minWidth: 220 }}>
+        {model.hasKeyCallouts && (
+          <button className="ghost chart-annotation-toggle" onClick={model.onToggleKeyCallouts}>
+            {model.showKeyCallouts ? "x" : "[...]"}
+          </button>
+        )}
         <label className="row chart-collapse-wrap">
           <input
             type="checkbox"

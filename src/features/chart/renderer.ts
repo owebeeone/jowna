@@ -9,19 +9,24 @@ import type {
 export class SunburstChartRenderer implements ChartRenderer {
   computeLayout(input: ChartRenderInput): ChartLayoutResult {
     const normalizedFocusPath = normalizeFocusedPath(input.root, input.focusedPath);
-    const root = resolveFocusedNode(input.root, normalizedFocusPath) ?? input.root;
-    const pathPrefix = normalizedFocusPath ? normalizedFocusPath.slice(0, -1) : [];
+    const clippedFocusPath = clipFocusedPathToDepthLimit(normalizedFocusPath, input.depthLimit);
+    const root = resolveFocusedNode(input.root, clippedFocusPath) ?? input.root;
+    const pathPrefix = clippedFocusPath ? clippedFocusPath.slice(0, -1) : [];
+    const focusAbsoluteDepth = clippedFocusPath?.length ?? 1;
+    const relativeDepthLimit =
+      typeof input.depthLimit === "number"
+        ? Math.max(0, input.depthLimit - focusAbsoluteDepth)
+        : null;
     const totalMagnitude = computeEffectiveMagnitude(root);
-    const collapseRedundant = input.settings.collapseRedundant !== false;
     const rootHasMultipleChildren = (input.root.children?.length ?? 0) > 1;
     const nodes = flattenForLayout({
       node: root,
       pathPrefix,
       depth: 0,
+      collapsedDepth: 0,
       startAngle: 0,
       angleSpan: totalMagnitude > 0 ? Math.PI * 2 : 0,
-      depthLimit: input.depthLimit,
-      collapseRedundant,
+      depthLimit: relativeDepthLimit,
       rootHasMultipleChildren,
     });
 
@@ -36,29 +41,31 @@ interface FlattenArgs {
   node: TreeNode;
   pathPrefix: string[];
   depth: number;
+  collapsedDepth: number;
   startAngle: number;
   angleSpan: number;
   depthLimit: number | null;
-  collapseRedundant: boolean;
   rootHasMultipleChildren: boolean;
 }
 
 interface FlattenChildEntry {
-  child: TreeNode | null;
+  child: TreeNode;
   pathSegments: string[];
   magnitude: number;
-  isUnclassified: boolean;
 }
 
 function flattenForLayout(args: FlattenArgs): ChartLayoutNode[] {
   const currentPath = [...args.pathPrefix, args.node.name];
   const nodeMagnitude = computeEffectiveMagnitude(args.node);
   const angleSpan = Math.max(0, args.angleSpan);
+  const collapseEligible = isCollapseEligibleNode(args.node, args.rootHasMultipleChildren);
 
   const currentNode: ChartLayoutNode = {
     path: currentPath,
     name: args.node.name,
     depth: args.depth,
+    collapsedDepth: args.collapsedDepth,
+    collapseEligible,
     magnitude: nodeMagnitude,
     startAngle: args.startAngle,
     endAngle: args.startAngle + angleSpan,
@@ -74,62 +81,43 @@ function flattenForLayout(args: FlattenArgs): ChartLayoutNode[] {
   }
 
   const resolvedChildren = args.node.children
-    .map((child) => {
-      const resolved = resolveCollapsedChild({
-        node: child,
-        collapseRedundant: args.collapseRedundant,
-        rootHasMultipleChildren: args.rootHasMultipleChildren,
-      });
-      return {
-        child: resolved.node,
-        pathSegments: resolved.pathSegments,
-        magnitude: computeEffectiveMagnitude(resolved.node),
-      };
-    })
+    .map((child) => ({
+      child,
+      pathSegments: [child.name],
+      magnitude: computeEffectiveMagnitude(child),
+    }))
     .filter((entry) => entry.magnitude > 0);
-  const childEntries: FlattenChildEntry[] = resolvedChildren.map((entry) => ({
-    child: entry.child,
-    pathSegments: entry.pathSegments,
-    magnitude: entry.magnitude,
-    isUnclassified: false,
-  }));
-  const childrenTotalMagnitude = childEntries.reduce((sum, entry) => sum + entry.magnitude, 0);
-  const unclassifiedMagnitude = Math.max(0, nodeMagnitude - childrenTotalMagnitude);
-  if (unclassifiedMagnitude > 1e-9) {
-    childEntries.push({
-      child: null,
-      pathSegments: [getUnclassifiedName(args.node.name)],
-      magnitude: unclassifiedMagnitude,
-      isUnclassified: true,
+  const childEntries: FlattenChildEntry[] = resolvedChildren
+    .map((entry) => ({
+      child: entry.child,
+      pathSegments: entry.pathSegments,
+      magnitude: entry.magnitude,
+    }))
+    .sort((left, right) => {
+      if (right.magnitude !== left.magnitude) {
+        return right.magnitude - left.magnitude;
+      }
+      const leftName = left.pathSegments[left.pathSegments.length - 1] ?? "";
+      const rightName = right.pathSegments[right.pathSegments.length - 1] ?? "";
+      return leftName.localeCompare(rightName);
     });
-  }
 
   let childStartAngle = args.startAngle;
+  const nextCollapsedDepth = args.collapsedDepth + (collapseEligible ? 0 : 1);
   for (const entry of childEntries) {
     const childAngleSpan = nodeMagnitude === 0 ? 0 : (entry.magnitude / nodeMagnitude) * angleSpan;
-    if (entry.isUnclassified || !entry.child) {
-      nodes.push({
-        path: currentPath.concat(entry.pathSegments),
-        name: entry.pathSegments[entry.pathSegments.length - 1] ?? "Unclassified",
+    nodes.push(
+      ...flattenForLayout({
+        node: entry.child,
+        pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
         depth: args.depth + 1,
-        magnitude: entry.magnitude,
+        collapsedDepth: nextCollapsedDepth,
         startAngle: childStartAngle,
-        endAngle: childStartAngle + childAngleSpan,
-      });
-    } else {
-      nodes.push(
-        ...flattenForLayout({
-          node: entry.child,
-          pathPrefix: currentPath.concat(entry.pathSegments.slice(0, -1)),
-          depth: args.depth + 1,
-          startAngle: childStartAngle,
-          angleSpan: childAngleSpan,
-          depthLimit: args.depthLimit,
-          collapseRedundant: args.collapseRedundant,
-          rootHasMultipleChildren: args.rootHasMultipleChildren,
-        }),
-      );
-    }
+        angleSpan: childAngleSpan,
+        depthLimit: args.depthLimit,
+        rootHasMultipleChildren: args.rootHasMultipleChildren,
+      }),
+    );
     childStartAngle += childAngleSpan;
   }
 
@@ -155,43 +143,7 @@ function normalizeMagnitude(value: number): number {
   return value;
 }
 
-function getUnclassifiedName(parentName: string): string {
-  return `[other ${parentName}]`;
-}
-
-interface CollapseResolution {
-  node: TreeNode;
-  pathSegments: string[];
-}
-
-function resolveCollapsedChild(input: {
-  node: TreeNode;
-  collapseRedundant: boolean;
-  rootHasMultipleChildren: boolean;
-}): CollapseResolution {
-  const pathSegments = [input.node.name];
-  let node = input.node;
-
-  if (!input.collapseRedundant) {
-    return { node, pathSegments };
-  }
-
-  while (isCollapsibleNode(node, input.rootHasMultipleChildren)) {
-    const child = node.children?.[0];
-    if (!child) {
-      break;
-    }
-    node = child;
-    pathSegments.push(child.name);
-  }
-
-  return {
-    node,
-    pathSegments,
-  };
-}
-
-function isCollapsibleNode(node: TreeNode, rootHasMultipleChildren: boolean): boolean {
+function isCollapseEligibleNode(node: TreeNode, rootHasMultipleChildren: boolean): boolean {
   const children = node.children ?? [];
   if (children.length !== 1) {
     return false;
@@ -238,4 +190,18 @@ function normalizeFocusedPath(root: TreeNode, focusedPath: string[] | null): str
     return null;
   }
   return normalized;
+}
+
+function clipFocusedPathToDepthLimit(
+  focusedPath: string[] | null,
+  depthLimit: number | null,
+): string[] | null {
+  if (!focusedPath || typeof depthLimit !== "number" || !Number.isFinite(depthLimit)) {
+    return focusedPath;
+  }
+  const maxSelectedDepth = Math.max(1, Math.floor(depthLimit) - 1);
+  if (focusedPath.length <= maxSelectedDepth) {
+    return focusedPath;
+  }
+  return focusedPath.slice(0, maxSelectedDepth);
 }

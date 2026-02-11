@@ -2,7 +2,6 @@ import { useGrip, useNumberGrip } from "@owebeeone/grip-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { ChartSettings } from "../../../domain";
 import {
-  SunburstChartRenderer,
   createStandaloneChartDocument,
   toStandaloneChartFileName,
 } from "../../../features/chart";
@@ -29,7 +28,7 @@ import {
   MIN_LABEL_FONT_SIZE,
   OUTER_RADIUS,
   buildKronaColorMap,
-  computeLayoutDataMaxDepth,
+  computeLayoutDataMaxDepthWithMode,
   createDatasetSelectorState,
   createRadiusScale,
   createWedgeRenderPlan,
@@ -64,6 +63,7 @@ export function useChartScreenModel() {
   const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
   const [detailsPanelCollapsed, setDetailsPanelCollapsed] = useState(false);
   const [openMembersPopoverForPath, setOpenMembersPopoverForPath] = useState<string | null>(null);
+  const [showKeyCallouts, setShowKeyCallouts] = useState(true);
   const [dimensionDrafts, setDimensionDrafts] = useState<{ width: string; height: string }>({
     width: "",
     height: "",
@@ -120,24 +120,13 @@ export function useChartScreenModel() {
     [activeDatasetId, datasets],
   );
 
-  const colorLayout = useMemo(() => {
-    if (!dataset) {
-      return null;
-    }
-    const renderer = new SunburstChartRenderer();
-    return renderer.computeLayout({
-      root: dataset.tree,
-      settings: {
-        ...DEFAULT_CHART_SETTINGS,
-        collapseRedundant: resolvedChartSettings.collapseRedundant,
-      },
-      focusedPath: null,
-      depthLimit: null,
-    });
-  }, [dataset, resolvedChartSettings.collapseRedundant]);
   const kronaColors = useMemo(
-    () => buildKronaColorMap(colorLayout ?? chartLayout ?? null),
-    [colorLayout, chartLayout],
+    () =>
+      buildKronaColorMap(
+        chartLayout ?? null,
+        resolvedChartSettings.collapseRedundant !== false,
+      ),
+    [chartLayout, resolvedChartSettings.collapseRedundant],
   );
 
   const resolvedFocusPath = dataset ? (focusPath ?? [dataset.tree.name]) : null;
@@ -181,14 +170,26 @@ export function useChartScreenModel() {
   const topSegments = topLevelSegments.slice(0, MAX_KEY_SEGMENTS);
   const hiddenSegments = topLevelSegments.length - topSegments.length;
 
-  const layoutDataMaxDepth = computeLayoutDataMaxDepth(chartLayout ?? null);
+  const layoutDataMaxDepth = computeLayoutDataMaxDepthWithMode(
+    chartLayout ?? null,
+    resolvedChartSettings.collapseRedundant !== false,
+  );
   const maxDepth = resolveRenderDepth(layoutDataMaxDepth, depthLimit);
-  const radiusScale = createRadiusScale(maxDepth, OUTER_RADIUS);
+  const displayDepth = maxDepth + 1;
+  const radiusScale = createRadiusScale(displayDepth, OUTER_RADIUS, labelFontSize);
   const centerDiscRadius = maxDepth > 0 ? Math.max(8, Math.min(42, radiusScale(1) * 0.78)) : 42;
   const wedgeRenderPlan = useMemo(
-    () => createWedgeRenderPlan(chartLayout ?? null, maxDepth, labelFontSize),
-    [chartLayout, labelFontSize, maxDepth],
+    () =>
+      createWedgeRenderPlan(
+        chartLayout ?? null,
+        maxDepth,
+        labelFontSize,
+        resolvedChartSettings.collapseRedundant !== false,
+        OUTER_RADIUS,
+      ),
+    [chartLayout, labelFontSize, maxDepth, resolvedChartSettings.collapseRedundant],
   );
+  const hasKeyCallouts = wedgeRenderPlan.visibleNodes.some((entry) => entry.isKeyed);
   const parentFocusPath =
     resolvedFocusPath && resolvedFocusPath.length > 1 ? resolvedFocusPath.slice(0, -1) : null;
 
@@ -311,6 +312,10 @@ export function useChartScreenModel() {
     setOpenMembersPopoverForPath(null);
   };
 
+  const onToggleKeyCallouts = () => {
+    setShowKeyCallouts((current) => !current);
+  };
+
   const openSettingsPopover = () => {
     setSettingsPopoverOpen(true);
   };
@@ -367,6 +372,7 @@ export function useChartScreenModel() {
     depthLimit,
     settingsPopoverOpen,
     detailsPanelCollapsed,
+    showKeyCallouts,
     chartSvgRef,
     resolvedChartSettings,
     chartSurfaceStyle,
@@ -394,9 +400,11 @@ export function useChartScreenModel() {
     topSegments,
     hiddenSegments,
     maxDepth,
+    displayDepth,
     radiusScale,
     centerDiscRadius,
     wedgeRenderPlan,
+    hasKeyCallouts,
     parentFocusPath,
     persistChartSettings,
     updateChartSettings,
@@ -409,6 +417,7 @@ export function useChartScreenModel() {
     onToggleMembersPopover,
     onCloseMembersPopover,
     onToggleDetailsPanel,
+    onToggleKeyCallouts,
     openSettingsPopover,
     closeSettingsPopover,
     onSelectDataset,
