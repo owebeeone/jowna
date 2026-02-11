@@ -17,7 +17,7 @@ export function ChartBreadcrumbs() {
           <button
             key={`${segment}-${index}`}
             className={`crumb ${isLast ? "is-current" : ""}`}
-            onClick={() => model.actions?.focusPath(crumbPath)}
+            onClick={() => model.focusPathAction(crumbPath)}
           >
             {segment}
           </button>

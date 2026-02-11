@@ -1,3 +1,6 @@
+import { useGrip, useRuntime } from "@owebeeone/grip-react";
+import { useMemo } from "react";
+import { ACTIVE_PROJECT_ID } from "../grips";
 import {
   ChartBreadcrumbs,
   ChartHeader,
@@ -7,11 +10,22 @@ import {
   ChartSettingsPopover,
   ChartToolbar,
   MembersPopover,
+  getOrCreateProjectChartUiContext,
   useChartScreenModel,
 } from "./chart/web";
 
 export function ChartScreen() {
-  const model = useChartScreenModel();
+  const activeProjectId = useGrip(ACTIVE_PROJECT_ID);
+  const runtime = useRuntime();
+  const chartUiContext = useMemo(
+    () =>
+      getOrCreateProjectChartUiContext({
+        parent: runtime.context,
+        projectId: activeProjectId,
+      }),
+    [activeProjectId, runtime.context],
+  );
+  const model = useChartScreenModel(chartUiContext);
 
   return (
     <ChartScreenProvider model={model}>

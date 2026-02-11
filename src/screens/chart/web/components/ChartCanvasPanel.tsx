@@ -183,15 +183,15 @@ export function ChartCanvasPanel() {
                       role={isInteractive ? "button" : undefined}
                       tabIndex={isInteractive ? 0 : undefined}
                       onMouseEnter={
-                        isInteractive ? () => model.actions?.hoverPath(interactionPath) : undefined
+                        isInteractive ? () => model.hoverPathAction(interactionPath) : undefined
                       }
                       onMouseLeave={
-                        isInteractive ? () => model.actions?.hoverPath(null) : undefined
+                        isInteractive ? () => model.hoverPathAction(null) : undefined
                       }
                       onClick={
                         isInteractive
                           ? (event) => {
-                              model.actions?.focusPath(interactionPath);
+                              model.focusPathAction(interactionPath);
                               event.currentTarget.blur?.();
                             }
                           : undefined
@@ -201,7 +201,7 @@ export function ChartCanvasPanel() {
                           ? (event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                model.actions?.focusPath(interactionPath);
+                                model.focusPathAction(interactionPath);
                               }
                             }
                           : undefined
@@ -248,8 +248,8 @@ export function ChartCanvasPanel() {
                 className="chart-center-disc"
                 onClick={() =>
                   model.parentFocusPath
-                    ? model.actions?.focusPath(model.parentFocusPath)
-                    : model.actions?.clearFocus()
+                    ? model.focusPathAction(model.parentFocusPath)
+                    : model.clearFocusAction()
                 }
               />
               <text x={0} y={-18} textAnchor="middle" className="chart-center-title">
@@ -288,14 +288,14 @@ export function ChartCanvasPanel() {
                   tabIndex={isInteractive ? 0 : undefined}
                   onMouseEnter={
                     isInteractive
-                      ? () => model.actions?.hoverPath(callout.interactionPath)
+                      ? () => model.hoverPathAction(callout.interactionPath)
                       : undefined
                   }
-                  onMouseLeave={isInteractive ? () => model.actions?.hoverPath(null) : undefined}
+                  onMouseLeave={isInteractive ? () => model.hoverPathAction(null) : undefined}
                   onClick={
                     isInteractive
                       ? (event) => {
-                          model.actions?.focusPath(callout.interactionPath);
+                          model.focusPathAction(callout.interactionPath);
                           event.currentTarget.blur?.();
                         }
                       : undefined
@@ -305,7 +305,7 @@ export function ChartCanvasPanel() {
                       ? (event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            model.actions?.focusPath(callout.interactionPath);
+                            model.focusPathAction(callout.interactionPath);
                           }
                         }
                       : undefined
