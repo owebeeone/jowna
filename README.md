@@ -2,129 +2,118 @@
 
 - Project: <https://github.com/owebeeone/jowna>
 - Live demo: <https://owebeeone.github.io/jowna>
+- Inspired by Krona: <https://github.com/marbl/Krona/wiki>
 
-## Why Jowna
+## Status
 
-Jowna is inspired by the Krona ecosystem and documentation:
-<https://github.com/marbl/Krona/wiki>
+Jowna is currently **alpha software**.
 
-The goal is similar: interactive hierarchical exploration of tabular data.
+The project is usable for exploration and export workflows, but behavior and file formats can still
+evolve.
 
-The difference is delivery:
+## What Jowna Is
 
-- no Perl installation required
-- no local CLI pipeline required for day-to-day use
-- runs entirely in the browser
-- easy sharing through downloadable self-contained HTML and SVG exports
+Jowna is a browser-first hierarchical data visualizer in the spirit of Krona, but without a Perl
+installation or a local CLI pipeline for everyday use.
+
+Key differences from traditional Krona workflows:
+
+- runs directly in the browser
+- project data is managed locally in browser storage
+- interactive chart + import workflow in one app
+- easy export to standalone HTML/SVG/project bundles
 
 ## Core Concepts
 
-- **Project**: a container for one or more datasets.
-- **Dataset**: parsed source data + generated hierarchy and metadata.
-- **Chart view**: interactive radial hierarchy (Krona-style navigation model).
-- **Import tool**: file/URL input + parser settings + preview + warnings.
+- **Project**: container for datasets and project-level chart settings
+- **Dataset**: parsed source rows + hierarchical tree + warnings
+- **Chart view**: interactive radial hierarchy with focus/hover/history controls
+- **Import tool**: parse configuration + preview + warning reporting
 
-## What Jowna Can Do
+## Features
 
-- Create/copy/delete projects
-- Rename projects and datasets inline
-- Import CSV/TSV/JSON with configurable parsing parameters
-- Preview normalized rows and warnings before applying import
-- Build chart-ready hierarchical data
-- Navigate chart with focus breadcrumbs, back/forward/up/reset, and depth control
-- Configure chart settings (stroke, colors, typography, dimensions)
-- Export chart as:
-  - standalone single-file HTML
-  - SVG snapshot of current chart state
-- Export dataset as JSON
-- Export/import entire Jowna project files (`.jowna`)
+- Create/copy/rename/delete projects
+- Rename datasets inline
+- Import multiple files in one batch via Import Tool
+- Import CSV/TSV/JSON with configurable parse parameters
+- Upload and import **Krona HTML** as project data
+- Preview parsed rows before loading
+- Best-effort parsing with warnings (instead of hard-failing on most row issues)
+- Chart navigation: click wedges, breadcrumbs, Back/Forward/Up/Reset, depth control
+- Chart display settings: border, stroke, collapse, typography, dimensions
+- Project-level persisted chart settings
+- Dataset selector in chart view (for multi-dataset projects)
+- Exports:
+  - **Download Project** (`.jowna`) for full project transfer/backup
+  - **Download Zip** for all datasets as TSV files
+  - **Download Dataset** JSON for individual dataset payloads
+  - **Download HTML** standalone interactive chart page
+  - **Download SVG** current chart snapshot
 
-## Browser-Only Persistence
+## Local Storage And Sharing
 
-Jowna stores project data in browser storage (IndexedDB/local storage metadata).
-This is convenient, but not guaranteed forever.
+Project data is stored on the host browser (IndexedDB/local browser storage).
 
-You should periodically export:
+That storage is local and can be cleared by browser/site-data cleanup.  
+For persistence and sharing:
 
-- the project (`Download Jowna`) for backup/move
-- key datasets (`Download Dataset`) where needed
+- use **Download Project** to keep a portable `.jowna` file
+- copy/share that `.jowna` file with collaborators
+- use **Upload Project** on another machine/browser to restore it
+
+`Download Project` preserves datasets and chart settings.
 
 ## Quick Start
 
-1. Open Jowna (local dev or live demo).
+1. Open Jowna.
 2. Create a project.
 3. Open **Import Tool**.
-4. Load file or URL.
-5. Configure parser fields (format, delimiter, headers, magnitude/path mappings).
-6. Click **Preview Parse** and review warnings.
-7. Click **Apply Import**.
-8. Open chart for the dataset.
-9. Navigate and tune settings.
-10. Export HTML/SVG as needed.
+4. Select one or more files (or load URL).
+5. Configure parse parameters.
+6. Click **Preview Parse**.
+7. Click **Load now**.
+8. Open chart view.
+9. Tune chart settings and depth.
+10. Export Project/Zip/HTML/SVG as needed.
 
-## Import Workflow Details
+## Import Notes
 
-In the import dialog you can control:
+Supported parse formats:
 
-- format (`auto`, `tsv`, `csv`, `json-hierarchy`, `json-flat`)
+- `auto`
+- `tsv`
+- `csv`
+- `json-hierarchy`
+- `json-flat`
+
+Configurable parameters include:
+
 - delimiter
 - header-row behavior
 - comment prefix
 - magnitude field
 - path fields
-- optional URL/description fields
-- optional attribute fields
+- URL/description fields
+- attribute fields
 
-Jowna follows a best-effort parse strategy:
+## Standalone HTML Export
 
-- row-level issues are reported as warnings
-- usable rows still load whenever possible
+`Download HTML` produces a single-file chart page that includes:
 
-## Chart Usage
+- chart settings
+- project datasets
+- dataset selection
+- interactive navigation
 
-### Navigation
-
-- click wedges to focus
-- hover wedges for detail emphasis
-- use breadcrumbs to jump to ancestor nodes
-- use **Back/Forward/Up/Reset**
-- use **Depth** to limit rendered levels
-
-### Chart Settings
-
-Use **Chart Settings** to change:
-
-- background and border
-- wedge stroke color/width
-- font family and size
-- optional fixed width/height (or fit mode)
-
-### Chart Export
-
-- **Download HTML**: standalone interactive chart page
-- **Download SVG**: current chart image snapshot
-
-## Data Export/Import
-
-### Dataset export
-
-- from dataset row, click **Download Dataset**
-- output: `.json` containing export metadata + dataset payload
-
-### Project export/import
-
-- **Download Jowna** exports a `.jowna` file
-- **Upload Project** imports previously exported `.jowna` archives
-
-Jowna archives are versioned for migration compatibility.
+This is useful for sharing chart views with users who should not need the full app runtime.
 
 ## Development
 
 ### Requirements
 
 - Node.js + npm
-- `rsync` (for docs publish workflow)
-- Python 3 (for release/publish automation script)
+- `rsync` (for docs publishing flow)
+- Python 3 (for publish/release helper script)
 
 ### Run locally
 
@@ -142,26 +131,21 @@ npm run typecheck
 npm run test
 ```
 
-## Publishing to GitHub Pages
+## Publishing (GitHub Pages)
 
-Jowna is configured for Pages path hosting (`/jowna/`).
+Jowna is path-hosted at `/jowna/`.
 
-Use:
+Publish with:
 
 ```bash
 npm run publish:site
 ```
 
-This runs `tools/publish.py`, which:
-
-1. verifies clean git state
-2. bumps package version and creates a release tag (`vX.Y.Z`) on `main`
-3. merges `main` into `publish`
-4. runs docs deploy (`npm run deploy:docs`)
-5. commits and pushes publish artifacts
+This runs `tools/publish.py` to build, version/tag, merge/push publish branch updates, and deploy
+docs artifacts.
 
 ## Tech Stack
 
 - React + TypeScript + Vite
-- `@owebeeone/grip-react` for grips/taps state flow
-- `papaparse` for CSV/TSV parsing
+- `@owebeeone/grip-react` (grips/taps)
+- `papaparse` (CSV/TSV parsing)

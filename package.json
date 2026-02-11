@@ -2,6 +2,7 @@
   "name": "jowna",
   "private": true,
   "version": "0.2.3",
+  "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
     "dev": "vite",

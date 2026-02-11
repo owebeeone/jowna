@@ -1,6 +1,7 @@
 import { useGrip, useTextGrip } from "@owebeeone/grip-react";
 import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import type { Dataset, ImportSource, ImportWarning } from "../domain";
+import { HelpPopover } from "./HelpPopover";
 import {
   ACTIVE_DATASET_ID,
   ACTIVE_PROJECT_ID,
@@ -61,6 +62,7 @@ export function SelectionScreen() {
   const [importParsedSourceNames, setImportParsedSourceNames] = useState<string[]>([]);
   const [importParseIssues, setImportParseIssues] = useState<string[]>([]);
   const [importApplyingBatch, setImportApplyingBatch] = useState(false);
+  const [helpPopoverOpen, setHelpPopoverOpen] = useState(false);
 
   const selectedImportSources =
     importFileSources.length > 0 ? importFileSources : importSource ? [importSource] : [];
@@ -69,8 +71,7 @@ export function SelectionScreen() {
     selectedImportSources.length > 0 &&
     importParseIssues.length === 0 &&
     importParsedSourceNames.length === selectedImportSources.length;
-  const canLoadParsedSources =
-    Boolean(actions) && allSelectedSourcesParsed && !importApplyingBatch;
+  const canLoadParsedSources = Boolean(actions) && allSelectedSourcesParsed && !importApplyingBatch;
   const activeImportSourceName = importSource?.name ?? null;
 
   const filteredRows = (importPreview?.rows ?? []).filter((row) => {
@@ -483,12 +484,13 @@ export function SelectionScreen() {
   return (
     <div className="app-shell">
       <div className="app-frame">
-        <header className="panel">
-          <h1>
-            <a href="https://github.com/owebeeone/jowna" target="_blank" rel="noreferrer">
-              Jowna - data visualizer
-            </a>
-          </h1>
+        <header className="panel row page-title-row">
+          <button className="title-link-button" onClick={() => setHelpPopoverOpen(true)}>
+            Jowna - data visualizer
+          </button>
+          <button className="ghost" onClick={() => setHelpPopoverOpen(true)}>
+            Help
+          </button>
         </header>
 
         <div className="panel-grid">
@@ -1000,10 +1002,7 @@ export function SelectionScreen() {
                 </div>
 
                 <div className="row">
-                  <button
-                    onClick={onLoadParsedSources}
-                    disabled={!canLoadParsedSources}
-                  >
+                  <button onClick={onLoadParsedSources} disabled={!canLoadParsedSources}>
                     {importApplyingBatch ? "Loading..." : "Load now"}
                   </button>
                 </div>
@@ -1024,6 +1023,8 @@ export function SelectionScreen() {
           </section>
         </div>
       )}
+
+      <HelpPopover open={helpPopoverOpen} onClose={() => setHelpPopoverOpen(false)} />
 
       {pendingDeleteProject && (
         <div className="delete-confirm-backdrop" onClick={onCancelDeleteProject}>

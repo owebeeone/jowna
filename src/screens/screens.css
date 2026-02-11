@@ -45,6 +45,27 @@
   text-decoration: underline;
 }
 
+.page-title-row {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+.title-link-button {
+  border: 0;
+  background: transparent;
+  color: #12251c;
+  font-size: clamp(1.35rem, 2.5vw, 2rem);
+  font-weight: 700;
+  padding: 0;
+  text-align: left;
+}
+
+.title-link-button:hover {
+  color: #1f6f4d;
+  text-decoration: underline;
+}
+
 .row {
   display: flex;
   gap: 8px;
@@ -285,6 +306,41 @@ button:disabled {
 
 .import-popover-footer {
   justify-content: flex-end;
+}
+
+.help-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(12, 31, 23, 0.45);
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.help-popover {
+  width: min(760px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+
+.help-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.help-popover-header h2 {
+  margin: 0;
+}
+
+.help-popover-body {
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .delete-confirm-backdrop {
@@ -725,6 +781,15 @@ button:disabled {
   }
 
   .chart-settings-popover {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .help-popover-backdrop {
+    padding: 10px;
+  }
+
+  .help-popover {
     width: calc(100vw - 20px);
     max-height: calc(100vh - 20px);
   }

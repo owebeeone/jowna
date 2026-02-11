@@ -9,17 +9,7 @@ export function downloadSvgFile(fileName: string, svg: SVGSVGElement): void {
   downloadBlobFile(fileName, blob);
 }
 
-export function toSvgFileName(datasetName: string): string {
-  const normalized = datasetName
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  const base = normalized.length > 0 ? normalized : "dataset-chart";
-  return `${base}.svg`;
-}
-
-function downloadBlobFile(fileName: string, blob: Blob): void {
+export function downloadBlobFile(fileName: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
 
   const anchor = document.createElement("a");
@@ -41,6 +31,16 @@ function downloadBlobFile(fileName: string, blob: Blob): void {
   setTimeout(() => {
     URL.revokeObjectURL(url);
   }, revokeDelayMs);
+}
+
+export function toSvgFileName(datasetName: string): string {
+  const normalized = datasetName
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const base = normalized.length > 0 ? normalized : "dataset-chart";
+  return `${base}.svg`;
 }
 
 function serializeSvgForDownload(svg: SVGSVGElement): string {
