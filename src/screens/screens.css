@@ -468,6 +468,13 @@ button:disabled {
     filter 160ms ease;
 }
 
+.chart-wedge:focus,
+.chart-wedge:focus-visible,
+.chart-key-callout:focus,
+.chart-key-callout:focus-visible {
+  outline: none;
+}
+
 .chart-wedge:hover {
   filter: brightness(1.07) saturate(1.06);
 }
@@ -546,19 +553,19 @@ button:disabled {
 }
 
 .chart-center-title {
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 700;
   fill: #102a1f;
 }
 
 .chart-center-metric {
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 700;
   fill: #174936;
 }
 
 .chart-center-sub {
-  font-size: 11px;
+  font-size: 9px;
   fill: #4f675d;
 }
 

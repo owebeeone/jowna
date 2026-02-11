@@ -53,7 +53,12 @@ export function buildKronaColorMap(
   const depthNormalizer = maxDepth > 8 ? 8 : Math.max(maxDepth, 1);
   const lightnessFactor = (KRONA_LIGHTNESS_MAX - KRONA_LIGHTNESS_BASE) / depthNormalizer;
 
-  const assignColor = (node: ChartLayoutNode, hueMin: number, hueMax: number): void => {
+  const assignColor = (
+    node: ChartLayoutNode,
+    hueMin: number,
+    hueMax: number,
+    baseMagnitude: number,
+  ): void => {
     let boundedHueMax = hueMax;
     if (boundedHueMax - hueMin > 1 / 12) {
       boundedHueMax = hueMin + 1 / 12;
@@ -79,6 +84,7 @@ export function buildKronaColorMap(
       return;
     }
 
+    let childBaseMagnitude = baseMagnitude;
     for (let index = 0; index < children.length; index += 1) {
       const child = children[index]!;
       let childHueMin: number;
@@ -92,22 +98,32 @@ export function buildKronaColorMap(
           childHueMin = index / children.length;
           childHueMax = (index + 0.55) / children.length;
         }
-      } else {
-        childHueMin = lerp(child.startAngle, node.startAngle, node.endAngle, hueMin, boundedHueMax);
-        childHueMax = lerp(
-          child.startAngle + (child.endAngle - child.startAngle) * 0.99,
-          node.startAngle,
-          node.endAngle,
+      } else if (node.magnitude > 0) {
+        childHueMin = lerp(
+          childBaseMagnitude,
+          baseMagnitude,
+          baseMagnitude + node.magnitude,
           hueMin,
           boundedHueMax,
         );
+        childHueMax = lerp(
+          childBaseMagnitude + child.magnitude * 0.99,
+          baseMagnitude,
+          baseMagnitude + node.magnitude,
+          hueMin,
+          boundedHueMax,
+        );
+      } else {
+        childHueMin = hueMin;
+        childHueMax = boundedHueMax;
       }
 
-      assignColor(child, childHueMin, childHueMax);
+      assignColor(child, childHueMin, childHueMax, childBaseMagnitude);
+      childBaseMagnitude += Math.max(0, child.magnitude);
     }
   };
 
-  assignColor(root, 0, 1);
+  assignColor(root, 0, 1, 0);
   return colors;
 }
 

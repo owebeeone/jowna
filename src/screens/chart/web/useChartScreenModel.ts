@@ -2,7 +2,6 @@ import { useGrip, useNumberGrip } from "@owebeeone/grip-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { ChartSettings } from "../../../domain";
 import {
-  SunburstChartRenderer,
   createStandaloneChartDocument,
   toStandaloneChartFileName,
 } from "../../../features/chart";
@@ -120,28 +119,13 @@ export function useChartScreenModel() {
     [activeDatasetId, datasets],
   );
 
-  const colorLayout = useMemo(() => {
-    if (!dataset) {
-      return null;
-    }
-    const renderer = new SunburstChartRenderer();
-    return renderer.computeLayout({
-      root: dataset.tree,
-      settings: {
-        ...DEFAULT_CHART_SETTINGS,
-        collapseRedundant: resolvedChartSettings.collapseRedundant,
-      },
-      focusedPath: null,
-      depthLimit: null,
-    });
-  }, [dataset, resolvedChartSettings.collapseRedundant]);
   const kronaColors = useMemo(
     () =>
       buildKronaColorMap(
-        colorLayout ?? chartLayout ?? null,
+        chartLayout ?? null,
         resolvedChartSettings.collapseRedundant !== false,
       ),
-    [colorLayout, chartLayout, resolvedChartSettings.collapseRedundant],
+    [chartLayout, resolvedChartSettings.collapseRedundant],
   );
 
   const resolvedFocusPath = dataset ? (focusPath ?? [dataset.tree.name]) : null;

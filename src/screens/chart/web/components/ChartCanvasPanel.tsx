@@ -153,7 +153,12 @@ export function ChartCanvasPanel() {
                         isInteractive ? () => model.actions?.hoverPath(null) : undefined
                       }
                       onClick={
-                        isInteractive ? () => model.actions?.focusPath(interactionPath) : undefined
+                        isInteractive
+                          ? (event) => {
+                              model.actions?.focusPath(interactionPath);
+                              event.currentTarget.blur?.();
+                            }
+                          : undefined
                       }
                       onKeyDown={
                         isInteractive
@@ -306,7 +311,10 @@ export function ChartCanvasPanel() {
                   onMouseLeave={isInteractive ? () => model.actions?.hoverPath(null) : undefined}
                   onClick={
                     isInteractive
-                      ? () => model.actions?.focusPath(callout.interactionPath)
+                      ? (event) => {
+                          model.actions?.focusPath(callout.interactionPath);
+                          event.currentTarget.blur?.();
+                        }
                       : undefined
                   }
                   onKeyDown={
