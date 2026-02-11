@@ -39,6 +39,10 @@ export function renderJownaSnapshotSvg(input: JownaSnapshotInput): string {
     focusedPath: input.focusedPath,
     depthLimit: input.depthLimit > 0 ? input.depthLimit : null,
   });
+  const renderRadius =
+    typeof input.radius === "number" && Number.isFinite(input.radius) && input.radius > 0
+      ? input.radius
+      : 300;
   const maxDepth = resolveRenderDepth(
     computeLayoutDataMaxDepthWithMode(layout, input.collapseRedundant),
     input.depthLimit,
@@ -50,12 +54,9 @@ export function renderJownaSnapshotSvg(input: JownaSnapshotInput): string {
     maxDepth,
     labelFontSize,
     input.collapseRedundant,
+    renderRadius,
   );
   const colors = buildKronaColorMap(layout, input.collapseRedundant);
-  const renderRadius =
-    typeof input.radius === "number" && Number.isFinite(input.radius) && input.radius > 0
-      ? input.radius
-      : 300;
   const radiusScale = createRadiusScale(displayDepth, renderRadius, labelFontSize);
   const centerX =
     typeof input.centerX === "number" && Number.isFinite(input.centerX)

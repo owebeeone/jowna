@@ -25,6 +25,7 @@ export function createWedgeRenderPlan(
   maxDepth: number,
   labelFontSize: number,
   collapseEnabled = false,
+  outerRadius = OUTER_RADIUS,
 ): WedgeRenderPlan {
   const displayDepth = maxDepth + 1;
   if (!layout || layout.nodes.length === 0) {
@@ -51,7 +52,7 @@ export function createWedgeRenderPlan(
   }
 
   const minVisibleWidth = Math.max(MIN_LABEL_FONT_SIZE, labelFontSize) * 2.3;
-  const radiusScale = createRadiusScale(displayDepth, OUTER_RADIUS, labelFontSize);
+  const radiusScale = createRadiusScale(displayDepth, outerRadius, labelFontSize);
   const maxRadius = radiusScale(displayDepth);
   const childrenByParent = new Map<string, ChartLayoutNode[]>();
   const nodesByPath = new Map<string, ChartLayoutNode>(
@@ -98,15 +99,16 @@ export function createWedgeRenderPlan(
         continue;
       }
 
-      const hidden = shouldHideChild(
+      const tooSmall = isChildTooSmall(
         childDepthForDisplay,
         child,
         radiusScale,
         maxRadius,
         minVisibleWidth,
       );
+      const hidden = tooSmall && childDepthForDisplay > 1;
       const keyedTopLevelHidden =
-        hidden &&
+        tooSmall &&
         childDepthForDisplay === 1 &&
         !(collapseEnabled && (child.collapseEligible ?? false));
 
@@ -117,15 +119,18 @@ export function createWedgeRenderPlan(
           const nextDepthForDisplay = collapseEnabled
             ? (next.collapsedDepth ?? next.depth)
             : next.depth;
-          const nextHidden = shouldHideChild(
+          const nextTooSmall = isChildTooSmall(
             nextDepthForDisplay,
             next,
             radiusScale,
             maxRadius,
             minVisibleWidth,
           );
+          const nextHidden = nextTooSmall && nextDepthForDisplay > 1;
           const nextIsKeyedCandidate =
-            nextDepthForDisplay === 1 && !(collapseEnabled && (next.collapseEligible ?? false));
+            nextTooSmall &&
+            nextDepthForDisplay === 1 &&
+            !(collapseEnabled && (next.collapseEligible ?? false));
           if (!nextHidden || nextIsKeyedCandidate) {
             break;
           }
@@ -144,7 +149,7 @@ export function createWedgeRenderPlan(
           nodesByPath,
         );
         const groupedColorPath = interactionPath;
-        const hiddenCount = run.length;
+        const hiddenCount = run.filter((node) => node.magnitude > 0).length;
         const groupedMagnitude = run.reduce((sum, node) => sum + node.magnitude, 0);
         const groupIndex = hiddenGroupIndexes.get(parentKey) ?? 0;
         hiddenGroupIndexes.set(parentKey, groupIndex + 1);
@@ -179,6 +184,8 @@ export function createWedgeRenderPlan(
         depth: childDepthForDisplay,
         collapsedDepth: childDepthForDisplay,
       };
+      const descendants = collectChildren(child.path);
+      const hasVisibleDescendants = descendants.length > 0;
       const childEntry: WedgeRenderNode = {
         node: displayNode,
         isGroupedHidden: false,
@@ -188,9 +195,8 @@ export function createWedgeRenderPlan(
         colorPath: child.path,
         interactionPath: child.path,
         renderOuterDepth: displayDepth,
-        labelOuterDepth: displayDepth,
+        labelOuterDepth: hasVisibleDescendants ? childDepthForDisplay : displayDepth,
       };
-      const descendants = collectChildren(child.path);
       visibleEntries.push(childEntry, ...descendants);
       index += 1;
     }
@@ -256,7 +262,7 @@ function resolveNonEmptyAncestorPath(
   return path;
 }
 
-function shouldHideChild(
+function isChildTooSmall(
   displayDepth: number,
   child: ChartLayoutNode,
   radiusScale: (depth: number) => number,

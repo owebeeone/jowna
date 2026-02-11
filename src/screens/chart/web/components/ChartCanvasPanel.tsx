@@ -54,6 +54,39 @@ export function ChartCanvasPanel() {
     radius: model.radiusScale(model.displayDepth),
     fontSizePx: model.labelFontSize,
   });
+  const visibleKeyCallouts = model.showKeyCallouts ? keyCallouts : [];
+  const labelEntries = model.wedgeRenderPlan.visibleNodes
+    .map((entry) => {
+      const node = entry.node;
+      const interactionPath = entry.interactionPath;
+      const innerRadius = model.radiusScale(Math.max(0, node.depth - 1));
+      const outerRadius = model.radiusScale(entry.labelOuterDepth);
+      const label = createWedgeLabel(
+        node,
+        innerRadius,
+        outerRadius,
+        model.displayDepth,
+        entry.labelOuterDepth,
+        model.labelFontSize,
+      );
+      if (entry.isKeyed || !label) {
+        return null;
+      }
+      return {
+        entry,
+        interactionPath,
+        label,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  const hoveredTooltipEntry = labelEntries.find(
+    (entry) =>
+      Boolean(model.hoverPath) &&
+      pathEquals(entry.interactionPath, model.hoverPath ?? []),
+  );
+  const hoveredTooltip = hoveredTooltipEntry
+    ? createHoverLabelTooltip(hoveredTooltipEntry.label, model.labelFontSize)
+    : null;
 
   return (
     <section className="chart-surface chart-surface-krona" style={model.chartSurfaceStyle}>
@@ -186,63 +219,9 @@ export function ChartCanvasPanel() {
                 );
               })}
 
-              {model.wedgeRenderPlan.visibleNodes.map((entry) => {
-                const node = entry.node;
-                const interactionPath = entry.interactionPath;
-                const innerRadius = model.radiusScale(Math.max(0, node.depth - 1));
-                const outerRadius = model.radiusScale(entry.labelOuterDepth);
-                const label = createWedgeLabel(
-                  node,
-                  innerRadius,
-                  outerRadius,
-                  model.displayDepth,
-                  entry.labelOuterDepth,
-                  model.labelFontSize,
-                );
-                if (entry.isKeyed || !label) {
-                  return null;
-                }
-
-                const showTooltip =
-                  Boolean(model.hoverPath) &&
-                  pathEquals(interactionPath, model.hoverPath ?? []) &&
-                  label.isTruncated;
-                const tooltip = showTooltip
-                  ? createHoverLabelTooltip(label, model.labelFontSize)
-                  : null;
+              {labelEntries.map(({ entry, label }) => {
                 return (
                   <g key={`label-${entry.key}`}>
-                    {tooltip && (
-                      <g className="chart-label-tooltip" pointerEvents="none">
-                        <rect
-                          className="chart-label-tooltip-box"
-                          x={tooltip.x}
-                          y={tooltip.y}
-                          width={tooltip.width}
-                          height={tooltip.height}
-                          rx={7}
-                          ry={7}
-                          fill="#ffffff"
-                          stroke={model.resolvedChartSettings.wedgeStrokeColor}
-                          strokeWidth={
-                            Math.max(0.4, model.resolvedChartSettings.wedgeStrokeWidth) + 0.5
-                          }
-                        />
-                        <text
-                          className="chart-label-tooltip-text"
-                          x={tooltip.textX}
-                          y={tooltip.textY}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          style={{
-                            fontFamily: model.resolvedChartSettings.fontFamily,
-                            fontSize: `${model.labelFontSize}px`,
-                          }}
-                        >
-                          {label.fullText}
-                        </text>
-                      </g>
-                    )}
                     <text
                       className="chart-wedge-label"
                       x={label.x}
@@ -282,7 +261,7 @@ export function ChartCanvasPanel() {
                 {model.activeShare.toFixed(1)}% of view
               </text>
             </g>
-            {keyCallouts.map((callout) => {
+            {visibleKeyCallouts.map((callout) => {
               const isInteractive =
                 callout.interactionPath.length > 0 &&
                 !isUnclassifiedNodeName(
@@ -371,6 +350,39 @@ export function ChartCanvasPanel() {
                 </g>
               );
             })}
+            {hoveredTooltip && hoveredTooltipEntry && (
+              <g
+                className="chart-label-tooltip"
+                pointerEvents="none"
+                transform={`translate(${centerX} ${centerY})`}
+              >
+                <rect
+                  className="chart-label-tooltip-box"
+                  x={hoveredTooltip.x}
+                  y={hoveredTooltip.y}
+                  width={hoveredTooltip.width}
+                  height={hoveredTooltip.height}
+                  rx={7}
+                  ry={7}
+                  fill="#ffffff"
+                  stroke={model.resolvedChartSettings.wedgeStrokeColor}
+                  strokeWidth={Math.max(0.4, model.resolvedChartSettings.wedgeStrokeWidth) + 0.5}
+                />
+                <text
+                  className="chart-label-tooltip-text"
+                  x={hoveredTooltip.textX}
+                  y={hoveredTooltip.textY}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  style={{
+                    fontFamily: model.resolvedChartSettings.fontFamily,
+                    fontSize: `${model.labelFontSize}px`,
+                  }}
+                >
+                  {hoveredTooltipEntry.label.fullText}
+                </text>
+              </g>
+            )}
           </svg>
           <div className="chart-hint muted">
             Click a segment to zoom. Hover to inspect. Click center to move up.

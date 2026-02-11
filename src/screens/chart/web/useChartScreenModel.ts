@@ -63,6 +63,7 @@ export function useChartScreenModel() {
   const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
   const [detailsPanelCollapsed, setDetailsPanelCollapsed] = useState(false);
   const [openMembersPopoverForPath, setOpenMembersPopoverForPath] = useState<string | null>(null);
+  const [showKeyCallouts, setShowKeyCallouts] = useState(true);
   const [dimensionDrafts, setDimensionDrafts] = useState<{ width: string; height: string }>({
     width: "",
     height: "",
@@ -184,9 +185,11 @@ export function useChartScreenModel() {
         maxDepth,
         labelFontSize,
         resolvedChartSettings.collapseRedundant !== false,
+        OUTER_RADIUS,
       ),
     [chartLayout, labelFontSize, maxDepth, resolvedChartSettings.collapseRedundant],
   );
+  const hasKeyCallouts = wedgeRenderPlan.visibleNodes.some((entry) => entry.isKeyed);
   const parentFocusPath =
     resolvedFocusPath && resolvedFocusPath.length > 1 ? resolvedFocusPath.slice(0, -1) : null;
 
@@ -309,6 +312,10 @@ export function useChartScreenModel() {
     setOpenMembersPopoverForPath(null);
   };
 
+  const onToggleKeyCallouts = () => {
+    setShowKeyCallouts((current) => !current);
+  };
+
   const openSettingsPopover = () => {
     setSettingsPopoverOpen(true);
   };
@@ -365,6 +372,7 @@ export function useChartScreenModel() {
     depthLimit,
     settingsPopoverOpen,
     detailsPanelCollapsed,
+    showKeyCallouts,
     chartSvgRef,
     resolvedChartSettings,
     chartSurfaceStyle,
@@ -396,6 +404,7 @@ export function useChartScreenModel() {
     radiusScale,
     centerDiscRadius,
     wedgeRenderPlan,
+    hasKeyCallouts,
     parentFocusPath,
     persistChartSettings,
     updateChartSettings,
@@ -408,6 +417,7 @@ export function useChartScreenModel() {
     onToggleMembersPopover,
     onCloseMembersPopover,
     onToggleDetailsPanel,
+    onToggleKeyCallouts,
     openSettingsPopover,
     closeSettingsPopover,
     onSelectDataset,
