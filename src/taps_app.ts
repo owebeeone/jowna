@@ -63,6 +63,8 @@ import {
   PREVIEW_FILTER_TAP,
   PROJECTS,
   PROJECTS_TAP,
+  ROUTE_LOAD_ERROR,
+  ROUTE_LOAD_ERROR_TAP,
 } from "./grips";
 import { createDefaultParserRegistry, DefaultParseImportService } from "./parsers";
 import { grok } from "./runtime_graph";
@@ -83,6 +85,11 @@ import {
 } from "./features/file-manager";
 
 let tapsRegistered = false;
+
+interface ExampleLoadRoute {
+  fileName: string;
+  projectName: string;
+}
 
 export function registerJownaTaps(): void {
   if (tapsRegistered) {
@@ -167,6 +174,10 @@ export function registerJownaTaps(): void {
     initial: IMPORT_POPOVER_OPEN.defaultValue ?? false,
     handleGrip: IMPORT_POPOVER_OPEN_TAP,
   });
+  const routeLoadErrorTap = createAtomValueTap(ROUTE_LOAD_ERROR, {
+    initial: ROUTE_LOAD_ERROR.defaultValue ?? null,
+    handleGrip: ROUTE_LOAD_ERROR_TAP,
+  });
   const previewFilterTap = createAtomValueTap(PREVIEW_FILTER, {
     initial: PREVIEW_FILTER.defaultValue ?? "",
     handleGrip: PREVIEW_FILTER_TAP,
@@ -228,6 +239,7 @@ export function registerJownaTaps(): void {
     importCanApplyTap,
     importDatasetNameTap,
     importPopoverOpenTap,
+    routeLoadErrorTap,
     previewFilterTap,
     newProjectNameTap,
     chartSettingsTap,
@@ -789,6 +801,7 @@ export function registerJownaTaps(): void {
     }
 
     await actions.refreshProjects();
+    await loadExampleProjectFromRoute(actions);
   }
 
   async function loadDatasetsForProject(projectId: string): Promise<void> {
@@ -818,6 +831,43 @@ export function registerJownaTaps(): void {
         activeDatasetId: nextDatasetId,
         updatedAt: nowIso(),
       });
+    }
+  }
+
+  async function loadExampleProjectFromRoute(actionsContract: JownaActions): Promise<void> {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const route = resolveExampleLoadRequest(
+      window.location.pathname,
+      window.location.search,
+      import.meta.env.BASE_URL,
+    );
+    if (!route) {
+      return;
+    }
+
+    routeLoadErrorTap.set(null);
+    try {
+      const exampleUrl = buildExampleProjectUrl(route.fileName, import.meta.env.BASE_URL);
+      const response = await fetch(exampleUrl, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} while fetching ${route.fileName}`);
+      }
+      const content = await response.text();
+      const file = new File([content], route.fileName, {
+        type: PROJECT_ARCHIVE_MIME_TYPE,
+      });
+      await actionsContract.importProjectArchive(file);
+      replaceRouteToBase(import.meta.env.BASE_URL);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error while loading example project.";
+      routeLoadErrorTap.set(
+        `Example project '${route.projectName}' does not exist or could not be loaded (${message}).`,
+      );
+      console.warn(`Failed loading example project '${route.projectName}' from load route.`, error);
     }
   }
 }
@@ -927,4 +977,109 @@ function downloadBlobFile(fileName: string, blob: Blob): void {
   anchor.click();
 
   URL.revokeObjectURL(url);
+}
+
+export function resolveExampleLoadRoute(pathname: string, baseUrl: string): ExampleLoadRoute | null {
+  const normalizedPathname = normalizeAbsolutePath(pathname);
+  const normalizedBasePath = normalizeBasePath(baseUrl);
+
+  let relativePath = normalizedPathname;
+  if (normalizedBasePath !== "/") {
+    if (relativePath === normalizedBasePath) {
+      relativePath = "/";
+    } else if (relativePath.startsWith(`${normalizedBasePath}/`)) {
+      relativePath = relativePath.slice(normalizedBasePath.length);
+    }
+  }
+
+  const segments = relativePath.split("/").filter((segment) => segment.length > 0);
+  if (segments.length !== 2 || segments[0] !== "load") {
+    return null;
+  }
+
+  const decodedName = decodeURIComponent(segments[1] ?? "").trim();
+  if (decodedName.length === 0) {
+    return null;
+  }
+
+  const fileName = decodedName.toLowerCase().endsWith(".jowna")
+    ? decodedName
+    : `${decodedName}.jowna`;
+  return {
+    fileName,
+    projectName: decodedName.replace(/\.jowna$/i, ""),
+  };
+}
+
+export function resolveExampleLoadRequest(
+  pathname: string,
+  search: string,
+  baseUrl: string,
+): ExampleLoadRoute | null {
+  const fromQuery = resolveExampleLoadQuery(search);
+  if (fromQuery) {
+    return fromQuery;
+  }
+  return resolveExampleLoadRoute(pathname, baseUrl);
+}
+
+export function buildExampleProjectUrl(fileName: string, baseUrl: string): string {
+  const normalizedBasePath = normalizeBasePath(baseUrl);
+  const encodedFileName = encodeURIComponent(fileName);
+  const basePrefix = normalizedBasePath === "/" ? "" : normalizedBasePath;
+  return `${basePrefix}/examples/${encodedFileName}`;
+}
+
+function replaceRouteToBase(baseUrl: string): void {
+  if (typeof window === "undefined" || typeof window.history?.replaceState !== "function") {
+    return;
+  }
+  const normalizedBasePath = normalizeBasePath(baseUrl);
+  const nextPathname = normalizedBasePath === "/" ? "/" : `${normalizedBasePath}/`;
+  window.history.replaceState(null, "", nextPathname);
+}
+
+function resolveExampleLoadQuery(search: string): ExampleLoadRoute | null {
+  const trimmed = search.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const queryText = trimmed.startsWith("?") ? trimmed.slice(1) : trimmed;
+  const params = new URLSearchParams(queryText);
+  const loadValue = params.get("load");
+  if (!loadValue) {
+    return null;
+  }
+
+  const decodedName = loadValue.trim();
+  if (decodedName.length === 0) {
+    return null;
+  }
+
+  const fileName = decodedName.toLowerCase().endsWith(".jowna")
+    ? decodedName
+    : `${decodedName}.jowna`;
+  return {
+    fileName,
+    projectName: decodedName.replace(/\.jowna$/i, ""),
+  };
+}
+
+function normalizeBasePath(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
+  if (trimmed.length === 0) {
+    return "/";
+  }
+  const baseOnly = trimmed.split(/[?#]/, 1)[0] ?? "/";
+  const withLeadingSlash = baseOnly.startsWith("/") ? baseOnly : `/${baseOnly}`;
+  const stripped = withLeadingSlash.replace(/\/+$/, "");
+  return stripped.length === 0 ? "/" : stripped;
+}
+
+function normalizeAbsolutePath(pathname: string): string {
+  const trimmed = pathname.trim();
+  if (trimmed.length === 0) {
+    return "/";
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }

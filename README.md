@@ -78,6 +78,22 @@ For persistence and sharing:
 9. Tune chart settings and depth.
 10. Export Project/Zip/HTML/SVG as needed.
 
+## Examples
+
+These hosted examples are loaded from Jowna project files in `public/examples`.
+
+- [XML demo](https://owebeeone.github.io/jowna/?load=xml)
+- [RDP comparison](https://owebeeone.github.io/jowna/?load=rdp.comp)
+- [MetaRep blast](https://owebeeone.github.io/jowna/?load=metarep-blast)
+- [RDP](https://owebeeone.github.io/jowna/?load=rdp)
+- [Disk usage (du)](https://owebeeone.github.io/jowna/?load=du)
+- [World demo](https://owebeeone.github.io/jowna/?load=world-demo)
+- [MG-RAST functions](https://owebeeone.github.io/jowna/?load=mg-rast.func)
+- [MetaRep EC](https://owebeeone.github.io/jowna/?load=metarep-ec)
+
+Attribution: these example datasets were adapted from the Krona project examples and are provided
+for demonstration in Jowna. See [Krona](https://github.com/marbl/Krona/wiki).
+
 ## Import Notes
 
 Supported parse formats:
