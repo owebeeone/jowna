@@ -1,8 +1,14 @@
-import { useGrip, useNumberGrip } from "@owebeeone/grip-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import type { ChartSettings } from "../../../domain";
+import {
+  useAtomValueTap,
+  useGrip,
+  useNumberGrip,
+  type GripContext,
+} from "@owebeeone/grip-react";
+import { useMemo, useRef, type ChangeEvent } from "react";
+import type { ChartSettings, TreeNode } from "../../../domain";
 import {
   createStandaloneChartDocument,
+  SunburstChartRenderer,
   STATIC_CHART_PAYLOAD_GLOBAL,
   toStandaloneChartFileName,
 } from "../../../features/chart";
@@ -20,7 +26,13 @@ import {
   CHART_HISTORY,
   CHART_HISTORY_INDEX,
   CHART_HOVER_PATH,
-  CHART_LAYOUT,
+  CHART_UI_ACTIVE_DIMENSION_DRAFT,
+  CHART_UI_DETAILS_PANEL_COLLAPSED,
+  CHART_UI_DIMENSION_DRAFTS,
+  CHART_UI_HELP_POPOVER_OPEN,
+  CHART_UI_OPEN_MEMBERS_POPOVER_FOR_PATH,
+  CHART_UI_SETTINGS_POPOVER_OPEN,
+  CHART_UI_SHOW_KEY_CALLOUTS,
   CHART_SELECTED_PATH,
   CHART_SETTINGS_STATE,
   CHART_SETTINGS_STATE_TAP,
@@ -50,32 +62,111 @@ import {
 import { CHART_FONT_OPTIONS } from "./constants";
 import { downloadBlobFile, downloadHtmlFile, downloadSvgFile, toSvgFileName } from "./download";
 
-export function useChartScreenModel() {
+const EMPTY_PATH_HISTORY: string[][] = [];
+const EMPTY_DIMENSION_DRAFTS = { width: "", height: "" };
+
+export function resolveComparableFocusPathForTree(params: {
+  tree: TreeNode;
+  requestedPath: string[] | null;
+}): string[] {
+  const fallback = [params.tree.name];
+  if (!params.requestedPath || params.requestedPath.length === 0) {
+    return fallback;
+  }
+
+  const normalized = params.requestedPath
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  if (normalized.length === 0) {
+    return fallback;
+  }
+
+  for (let length = normalized.length; length >= 1; length -= 1) {
+    const candidate = normalized.slice(0, length);
+    if (findNodeByPath(params.tree, candidate)) {
+      return candidate;
+    }
+  }
+
+  return fallback;
+}
+
+export function useChartScreenModel(chartUiContext: GripContext) {
   const actions = useGrip(JOWNA_ACTIONS);
   const dataset = useGrip(ACTIVE_DATASET);
   const activeProject = useGrip(ACTIVE_PROJECT);
   const datasets = useGrip(DATASETS) ?? [];
   const activeDatasetId = useGrip(ACTIVE_DATASET_ID) ?? null;
-  const chartLayout = useGrip(CHART_LAYOUT);
-  const focusPath = useGrip(CHART_FOCUS_PATH);
-  const selectedPath = useGrip(CHART_SELECTED_PATH);
-  const hoverPath = useGrip(CHART_HOVER_PATH);
-  const history = useGrip(CHART_HISTORY) ?? [];
-  const historyIndex = useGrip(CHART_HISTORY_INDEX) ?? -1;
   const chartSettings = useGrip(CHART_SETTINGS_STATE);
   const chartSettingsTap = useGrip(CHART_SETTINGS_STATE_TAP);
-  const depthLimit = useGrip(CHART_DEPTH_LIMIT) ?? 0;
-  const [settingsPopoverOpen, setSettingsPopoverOpen] = useState(false);
-  const [detailsPanelCollapsed, setDetailsPanelCollapsed] = useState(false);
-  const [openMembersPopoverForPath, setOpenMembersPopoverForPath] = useState<string | null>(null);
-  const [showKeyCallouts, setShowKeyCallouts] = useState(true);
-  const [helpPopoverOpen, setHelpPopoverOpen] = useState(false);
-  const [dimensionDrafts, setDimensionDrafts] = useState<{ width: string; height: string }>({
-    width: "",
-    height: "",
+  const focusPathTap = useAtomValueTap(CHART_FOCUS_PATH, {
+    ctx: chartUiContext,
+    initial: null,
   });
-  const [activeDimensionDraft, setActiveDimensionDraft] = useState<"width" | "height" | null>(null);
+  const selectedPathTap = useAtomValueTap(CHART_SELECTED_PATH, {
+    ctx: chartUiContext,
+    initial: null,
+  });
+  const hoverPathTap = useAtomValueTap(CHART_HOVER_PATH, {
+    ctx: chartUiContext,
+    initial: null,
+  });
+  const historyTap = useAtomValueTap(CHART_HISTORY, {
+    ctx: chartUiContext,
+    initial: CHART_HISTORY.defaultValue ?? EMPTY_PATH_HISTORY,
+  });
+  const historyIndexTap = useAtomValueTap(CHART_HISTORY_INDEX, {
+    ctx: chartUiContext,
+    initial: -1,
+  });
+  const focusPathState = useGrip(CHART_FOCUS_PATH, chartUiContext) ?? null;
+  const selectedPathState = useGrip(CHART_SELECTED_PATH, chartUiContext) ?? null;
+  const hoverPathState = useGrip(CHART_HOVER_PATH, chartUiContext) ?? null;
+  const historyState = useGrip(CHART_HISTORY, chartUiContext) ?? EMPTY_PATH_HISTORY;
+  const historyIndexState = useGrip(CHART_HISTORY_INDEX, chartUiContext) ?? -1;
+  const depthLimit = useGrip(CHART_DEPTH_LIMIT) ?? 0;
+
+  const settingsPopoverTap = useAtomValueTap(CHART_UI_SETTINGS_POPOVER_OPEN, {
+    ctx: chartUiContext,
+    initial: false,
+  });
+  const detailsPanelCollapsedTap = useAtomValueTap(CHART_UI_DETAILS_PANEL_COLLAPSED, {
+    ctx: chartUiContext,
+    initial: false,
+  });
+  const openMembersPopoverForPathTap = useAtomValueTap(CHART_UI_OPEN_MEMBERS_POPOVER_FOR_PATH, {
+    ctx: chartUiContext,
+    initial: null,
+  });
+  const showKeyCalloutsTap = useAtomValueTap(CHART_UI_SHOW_KEY_CALLOUTS, {
+    ctx: chartUiContext,
+    initial: true,
+  });
+  const helpPopoverOpenTap = useAtomValueTap(CHART_UI_HELP_POPOVER_OPEN, {
+    ctx: chartUiContext,
+    initial: false,
+  });
+  const dimensionDraftsTap = useAtomValueTap(CHART_UI_DIMENSION_DRAFTS, {
+    ctx: chartUiContext,
+    initial: CHART_UI_DIMENSION_DRAFTS.defaultValue ?? EMPTY_DIMENSION_DRAFTS,
+  });
+  const activeDimensionDraftTap = useAtomValueTap(CHART_UI_ACTIVE_DIMENSION_DRAFT, {
+    ctx: chartUiContext,
+    initial: null,
+  });
+
+  const settingsPopoverOpen = useGrip(CHART_UI_SETTINGS_POPOVER_OPEN, chartUiContext) ?? false;
+  const detailsPanelCollapsed =
+    useGrip(CHART_UI_DETAILS_PANEL_COLLAPSED, chartUiContext) ?? false;
+  const openMembersPopoverForPath =
+    useGrip(CHART_UI_OPEN_MEMBERS_POPOVER_FOR_PATH, chartUiContext) ?? null;
+  const showKeyCallouts = useGrip(CHART_UI_SHOW_KEY_CALLOUTS, chartUiContext) ?? true;
+  const helpPopoverOpen = useGrip(CHART_UI_HELP_POPOVER_OPEN, chartUiContext) ?? false;
+  const dimensionDrafts = useGrip(CHART_UI_DIMENSION_DRAFTS, chartUiContext) ?? EMPTY_DIMENSION_DRAFTS;
+  const activeDimensionDraft =
+    useGrip(CHART_UI_ACTIVE_DIMENSION_DRAFT, chartUiContext) ?? null;
   const chartSvgRef = useRef<SVGSVGElement | null>(null);
+  const chartRenderer = useMemo(() => new SunburstChartRenderer(), []);
 
   const depthBind = useNumberGrip(CHART_DEPTH_LIMIT, CHART_DEPTH_LIMIT_TAP, {
     emptyAs: 0,
@@ -128,6 +219,17 @@ export function useChartScreenModel() {
   const isStaticMode =
     typeof window !== "undefined" &&
     Object.prototype.hasOwnProperty.call(window, STATIC_CHART_PAYLOAD_GLOBAL);
+  const chartLayout = useMemo(() => {
+    if (!dataset) {
+      return null;
+    }
+    return chartRenderer.computeLayout({
+      root: dataset.tree,
+      settings: resolvedChartSettings,
+      focusedPath: focusPathState,
+      depthLimit: depthLimit <= 0 ? null : depthLimit,
+    });
+  }, [chartRenderer, dataset, resolvedChartSettings, focusPathState, depthLimit]);
 
   const kronaColors = useMemo(
     () =>
@@ -135,8 +237,12 @@ export function useChartScreenModel() {
     [chartLayout, resolvedChartSettings.collapseRedundant],
   );
 
-  const resolvedFocusPath = dataset ? (focusPath ?? [dataset.tree.name]) : null;
-  const activePath = hoverPath ?? selectedPath ?? resolvedFocusPath;
+  const resolvedFocusPath = dataset
+    ? focusPathState && findNodeByPath(dataset.tree, focusPathState)
+      ? focusPathState
+      : [dataset.tree.name]
+    : null;
+  const activePath = hoverPathState ?? selectedPathState ?? resolvedFocusPath;
   const activeNode = dataset ? findNodeByPath(dataset.tree, activePath) : null;
   const activeLayoutNode =
     activePath && chartLayout
@@ -225,8 +331,13 @@ export function useChartScreenModel() {
 
   const updateDimensionMode = (dimension: "width" | "height", mode: "fit" | "custom") => {
     if (mode === "fit") {
-      setActiveDimensionDraft((current) => (current === dimension ? null : current));
-      setDimensionDrafts((current) => ({ ...current, [dimension]: "" }));
+      if (activeDimensionDraft === dimension) {
+        activeDimensionDraftTap.set(null);
+      }
+      dimensionDraftsTap.update((current) => ({
+        ...(current ?? { width: "", height: "" }),
+        [dimension]: "",
+      }));
       updateChartSettings({ [dimension]: "fit" } as Partial<ChartSettings>);
       return;
     }
@@ -238,7 +349,10 @@ export function useChartScreenModel() {
         ? Math.max(240, currentDimension)
         : fallback;
 
-    setDimensionDrafts((current) => ({ ...current, [dimension]: String(normalized) }));
+    dimensionDraftsTap.update((current) => ({
+      ...(current ?? { width: "", height: "" }),
+      [dimension]: String(normalized),
+    }));
     updateChartSettings({
       [dimension]: normalized,
     } as Partial<ChartSettings>);
@@ -246,29 +360,126 @@ export function useChartScreenModel() {
 
   const onDimensionValueChange =
     (dimension: "width" | "height") => (event: ChangeEvent<HTMLInputElement>) => {
-      setDimensionDrafts((current) => ({ ...current, [dimension]: event.target.value }));
+      dimensionDraftsTap.update((current) => ({
+        ...(current ?? { width: "", height: "" }),
+        [dimension]: event.target.value,
+      }));
     };
 
   const onDimensionInputFocus = (dimension: "width" | "height") => () => {
-    setActiveDimensionDraft(dimension);
+    activeDimensionDraftTap.set(dimension);
+    const currentDimension = resolvedChartSettings[dimension];
+    const fallback = dimension === "width" ? "620" : "640";
+    const draftValue =
+      typeof currentDimension === "number" && Number.isFinite(currentDimension)
+        ? String(Math.max(240, currentDimension))
+        : fallback;
+    dimensionDraftsTap.update((current) => ({
+      ...(current ?? { width: "", height: "" }),
+      [dimension]: draftValue,
+    }));
   };
 
   const onDimensionInputBlur =
     (dimension: "width" | "height") => (event: ChangeEvent<HTMLInputElement>) => {
-      setActiveDimensionDraft((current) => (current === dimension ? null : current));
+      if (activeDimensionDraft === dimension) {
+        activeDimensionDraftTap.set(null);
+      }
       const parsed = Number.parseInt(event.target.value, 10);
       if (!Number.isFinite(parsed)) {
         const fallback =
           typeof resolvedChartSettings[dimension] === "number"
             ? String(resolvedChartSettings[dimension])
             : "";
-        setDimensionDrafts((current) => ({ ...current, [dimension]: fallback }));
+        dimensionDraftsTap.update((current) => ({
+          ...(current ?? { width: "", height: "" }),
+          [dimension]: fallback,
+        }));
         return;
       }
       const normalized = Math.max(240, parsed);
-      setDimensionDrafts((current) => ({ ...current, [dimension]: String(normalized) }));
+      dimensionDraftsTap.update((current) => ({
+        ...(current ?? { width: "", height: "" }),
+        [dimension]: String(normalized),
+      }));
       updateChartSettings({ [dimension]: normalized } as Partial<ChartSettings>);
     };
+
+  const normalizeNodePath = (path: string[]): string[] =>
+    path.map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+
+  const focusPath = (path: string[]) => {
+    if (!dataset) {
+      return;
+    }
+    const normalized = normalizeNodePath(path);
+    if (normalized.length === 0 || !findNodeByPath(dataset.tree, normalized)) {
+      return;
+    }
+
+    focusPathTap.set(normalized);
+    selectedPathTap.set(normalized);
+    hoverPathTap.set(null);
+
+    const history = historyTap.get() ?? [];
+    const historyIndex = historyIndexTap.get() ?? -1;
+    const nextHistory = [...history.slice(0, historyIndex + 1), normalized];
+    historyTap.set(nextHistory);
+    historyIndexTap.set(nextHistory.length - 1);
+  };
+
+  const hoverPath = (path: string[] | null) => {
+    if (!dataset) {
+      hoverPathTap.set(null);
+      return;
+    }
+    if (!path) {
+      hoverPathTap.set(null);
+      return;
+    }
+    const normalized = normalizeNodePath(path);
+    if (normalized.length === 0 || !findNodeByPath(dataset.tree, normalized)) {
+      hoverPathTap.set(null);
+      return;
+    }
+    hoverPathTap.set(normalized);
+  };
+
+  const goBack = () => {
+    const history = historyTap.get() ?? [];
+    const historyIndex = historyIndexTap.get() ?? -1;
+    if (historyIndex <= 0) {
+      return;
+    }
+    const nextIndex = historyIndex - 1;
+    historyIndexTap.set(nextIndex);
+    const path = history[nextIndex] ?? null;
+    focusPathTap.set(path);
+    selectedPathTap.set(path);
+    hoverPathTap.set(null);
+  };
+
+  const goForward = () => {
+    const history = historyTap.get() ?? [];
+    const historyIndex = historyIndexTap.get() ?? -1;
+    if (historyIndex >= history.length - 1) {
+      return;
+    }
+    const nextIndex = historyIndex + 1;
+    historyIndexTap.set(nextIndex);
+    const path = history[nextIndex] ?? null;
+    focusPathTap.set(path);
+    selectedPathTap.set(path);
+    hoverPathTap.set(null);
+  };
+
+  const clearFocus = () => {
+    focusPathTap.set(null);
+    selectedPathTap.set(null);
+    hoverPathTap.set(null);
+    historyTap.set([]);
+    historyIndexTap.set(-1);
+  };
 
   const onDownloadHtml = async () => {
     if (!dataset) {
@@ -282,7 +493,7 @@ export function useChartScreenModel() {
         activeDatasetId,
         depthLimit,
         chartSettings: resolvedChartSettings,
-        focusPath,
+        focusPath: focusPathState,
       });
       downloadHtmlFile(toStandaloneChartFileName(dataset.name), html);
     } catch (error) {
@@ -339,69 +550,61 @@ export function useChartScreenModel() {
     if (!activePathKey) {
       return;
     }
-    setOpenMembersPopoverForPath((current) => (current === activePathKey ? null : activePathKey));
+    openMembersPopoverForPathTap.update((current) =>
+      current === activePathKey ? null : activePathKey,
+    );
   };
 
   const onCloseMembersPopover = () => {
-    setOpenMembersPopoverForPath(null);
+    openMembersPopoverForPathTap.set(null);
   };
 
   const onToggleDetailsPanel = () => {
-    setDetailsPanelCollapsed((current) => !current);
-    setOpenMembersPopoverForPath(null);
+    detailsPanelCollapsedTap.update((current) => !current);
+    openMembersPopoverForPathTap.set(null);
   };
 
   const onToggleKeyCallouts = () => {
-    setShowKeyCallouts((current) => !current);
+    showKeyCalloutsTap.update((current) => !current);
   };
 
   const openSettingsPopover = () => {
-    setSettingsPopoverOpen(true);
+    settingsPopoverTap.set(true);
   };
 
   const closeSettingsPopover = () => {
-    setSettingsPopoverOpen(false);
+    settingsPopoverTap.set(false);
   };
 
   const openHelpPopover = () => {
-    setHelpPopoverOpen(true);
+    helpPopoverOpenTap.set(true);
   };
 
   const closeHelpPopover = () => {
-    setHelpPopoverOpen(false);
+    helpPopoverOpenTap.set(false);
   };
 
   const onSelectDataset = (nextDatasetId: string) => {
     if (!nextDatasetId || nextDatasetId === datasetSelector.selectedId) {
       return;
     }
+    const nextDataset = datasets.find((entry) => entry.id === nextDatasetId) ?? null;
+    if (nextDataset) {
+      const nextFocusPath = resolveComparableFocusPathForTree({
+        tree: nextDataset.tree,
+        requestedPath: resolvedFocusPath,
+      });
+      focusPathTap.set(nextFocusPath);
+      selectedPathTap.set(nextFocusPath);
+      hoverPathTap.set(null);
+      historyTap.set([nextFocusPath]);
+      historyIndexTap.set(0);
+    } else {
+      clearFocus();
+    }
     actions?.openChart(nextDatasetId);
-    setOpenMembersPopoverForPath(null);
+    openMembersPopoverForPathTap.set(null);
   };
-
-  useEffect(() => {
-    if (activeDimensionDraft !== "width") {
-      const nextWidth =
-        typeof resolvedChartSettings.width === "number" ? String(resolvedChartSettings.width) : "";
-      setDimensionDrafts((current) =>
-        current.width === nextWidth ? current : { ...current, width: nextWidth },
-      );
-    }
-    if (activeDimensionDraft !== "height") {
-      const nextHeight =
-        typeof resolvedChartSettings.height === "number"
-          ? String(resolvedChartSettings.height)
-          : "";
-      setDimensionDrafts((current) =>
-        current.height === nextHeight ? current : { ...current, height: nextHeight },
-      );
-    }
-  }, [
-    activeDimensionDraft,
-    resolvedChartSettings.height,
-    resolvedChartSettings.width,
-    setDimensionDrafts,
-  ]);
 
   return {
     actions,
@@ -410,11 +613,11 @@ export function useChartScreenModel() {
     datasets,
     activeDatasetId,
     chartLayout,
-    focusPath,
-    selectedPath,
-    hoverPath,
-    history,
-    historyIndex,
+    focusPath: focusPathState,
+    selectedPath: selectedPathState,
+    hoverPath: hoverPathState,
+    history: historyState,
+    historyIndex: historyIndexState,
     depthBind,
     depthLimit,
     settingsPopoverOpen,
@@ -463,6 +666,11 @@ export function useChartScreenModel() {
     onDownloadHtml,
     onDownloadSvg,
     onDownloadDatasetsZip,
+    focusPathAction: focusPath,
+    hoverPathAction: hoverPath,
+    goBackAction: goBack,
+    goForwardAction: goForward,
+    clearFocusAction: clearFocus,
     onToggleMembersPopover,
     onCloseMembersPopover,
     onToggleDetailsPanel,

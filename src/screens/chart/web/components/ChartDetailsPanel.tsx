@@ -75,9 +75,9 @@ export function ChartDetailsPanel() {
                 <button
                   key={`key-${node.path.join("/")}`}
                   className={`key-row ${isActive ? "is-active" : ""}`}
-                  onMouseEnter={() => model.actions?.hoverPath(node.path)}
-                  onMouseLeave={() => model.actions?.hoverPath(null)}
-                  onClick={() => model.actions?.focusPath(node.path)}
+                  onMouseEnter={() => model.hoverPathAction(node.path)}
+                  onMouseLeave={() => model.hoverPathAction(null)}
+                  onClick={() => model.focusPathAction(node.path)}
                 >
                   <span
                     className="legend-dot"

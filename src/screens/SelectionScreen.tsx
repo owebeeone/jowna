@@ -1,5 +1,5 @@
-import { useGrip, useTextGrip } from "@owebeeone/grip-react";
-import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { useAtomValueTap, useGrip, useTextGrip } from "@owebeeone/grip-react";
+import { useRef, type ChangeEvent, type KeyboardEvent } from "react";
 import type { Dataset, ImportSource, ImportWarning } from "../domain";
 import { HelpPopover } from "./HelpPopover";
 import {
@@ -27,18 +27,20 @@ import {
   PROJECTS,
   ROUTE_LOAD_ERROR,
   ROUTE_LOAD_ERROR_TAP,
+  SELECTION_DELETE_CONFIRM_TEXT,
+  SELECTION_DELETE_DIALOG_TARGET,
+  SELECTION_EDITING_DATASET_ID,
+  SELECTION_EDITING_DATASET_NAME,
+  SELECTION_EDITING_PROJECT_ID,
+  SELECTION_EDITING_PROJECT_NAME,
+  SELECTION_HELP_POPOVER_OPEN,
+  SELECTION_IMPORT_APPLYING_BATCH,
+  SELECTION_IMPORT_FILE_SOURCES,
+  SELECTION_IMPORT_PARSE_ISSUES,
+  SELECTION_IMPORT_PARSED_SOURCE_NAMES,
+  SELECTION_PROJECT_TRANSFER_NOTICE,
+  SELECTION_PROJECT_TRANSFER_WARNINGS,
 } from "../grips";
-
-type DeleteDialogTarget =
-  | {
-      kind: "project";
-      projectId: string;
-      projectName: string;
-    }
-  | {
-      kind: "all";
-      projectCount: number;
-    };
 
 export function SelectionScreen() {
   const MAX_TRANSFER_WARNINGS = 120;
@@ -64,20 +66,37 @@ export function SelectionScreen() {
   const projectNameBind = useTextGrip(NEW_PROJECT_NAME, NEW_PROJECT_NAME_TAP);
   const previewFilterBind = useTextGrip(PREVIEW_FILTER, PREVIEW_FILTER_TAP);
   const urlInputBind = useTextGrip(IMPORT_URL_INPUT, IMPORT_URL_INPUT_TAP);
-  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [editingProjectName, setEditingProjectName] = useState("");
-  const [editingDatasetId, setEditingDatasetId] = useState<string | null>(null);
-  const [editingDatasetName, setEditingDatasetName] = useState("");
-  const [projectTransferNotice, setProjectTransferNotice] = useState<string | null>(null);
-  const [projectTransferWarnings, setProjectTransferWarnings] = useState<string[]>([]);
-  const [deleteDialogTarget, setDeleteDialogTarget] = useState<DeleteDialogTarget | null>(null);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const editingProjectIdTap = useAtomValueTap(SELECTION_EDITING_PROJECT_ID, { initial: null });
+  const editingProjectNameTap = useAtomValueTap(SELECTION_EDITING_PROJECT_NAME, { initial: "" });
+  const editingDatasetIdTap = useAtomValueTap(SELECTION_EDITING_DATASET_ID, { initial: null });
+  const editingDatasetNameTap = useAtomValueTap(SELECTION_EDITING_DATASET_NAME, { initial: "" });
+  const projectTransferNoticeTap = useAtomValueTap(SELECTION_PROJECT_TRANSFER_NOTICE, {
+    initial: null,
+  });
+  const projectTransferWarningsTap = useAtomValueTap(SELECTION_PROJECT_TRANSFER_WARNINGS);
+  const deleteDialogTargetTap = useAtomValueTap(SELECTION_DELETE_DIALOG_TARGET, { initial: null });
+  const deleteConfirmTextTap = useAtomValueTap(SELECTION_DELETE_CONFIRM_TEXT, { initial: "" });
   const projectArchiveInputRef = useRef<HTMLInputElement | null>(null);
-  const [importFileSources, setImportFileSources] = useState<ImportSource[]>([]);
-  const [importParsedSourceNames, setImportParsedSourceNames] = useState<string[]>([]);
-  const [importParseIssues, setImportParseIssues] = useState<string[]>([]);
-  const [importApplyingBatch, setImportApplyingBatch] = useState(false);
-  const [helpPopoverOpen, setHelpPopoverOpen] = useState(false);
+  const importFileSourcesTap = useAtomValueTap(SELECTION_IMPORT_FILE_SOURCES);
+  const importParsedSourceNamesTap = useAtomValueTap(SELECTION_IMPORT_PARSED_SOURCE_NAMES);
+  const importParseIssuesTap = useAtomValueTap(SELECTION_IMPORT_PARSE_ISSUES);
+  const importApplyingBatchTap = useAtomValueTap(SELECTION_IMPORT_APPLYING_BATCH, {
+    initial: false,
+  });
+  const helpPopoverOpenTap = useAtomValueTap(SELECTION_HELP_POPOVER_OPEN, { initial: false });
+  const editingProjectId = useGrip(SELECTION_EDITING_PROJECT_ID) ?? null;
+  const editingProjectName = useGrip(SELECTION_EDITING_PROJECT_NAME) ?? "";
+  const editingDatasetId = useGrip(SELECTION_EDITING_DATASET_ID) ?? null;
+  const editingDatasetName = useGrip(SELECTION_EDITING_DATASET_NAME) ?? "";
+  const projectTransferNotice = useGrip(SELECTION_PROJECT_TRANSFER_NOTICE);
+  const projectTransferWarnings = useGrip(SELECTION_PROJECT_TRANSFER_WARNINGS) ?? [];
+  const deleteDialogTarget = useGrip(SELECTION_DELETE_DIALOG_TARGET) ?? null;
+  const deleteConfirmText = useGrip(SELECTION_DELETE_CONFIRM_TEXT) ?? "";
+  const importFileSources = useGrip(SELECTION_IMPORT_FILE_SOURCES) ?? [];
+  const importParsedSourceNames = useGrip(SELECTION_IMPORT_PARSED_SOURCE_NAMES) ?? [];
+  const importParseIssues = useGrip(SELECTION_IMPORT_PARSE_ISSUES) ?? [];
+  const importApplyingBatch = useGrip(SELECTION_IMPORT_APPLYING_BATCH) ?? false;
+  const helpPopoverOpen = useGrip(SELECTION_HELP_POPOVER_OPEN) ?? false;
   const logoSrc = `${import.meta.env.BASE_URL}jowna-logo.svg`;
 
   const selectedImportSources =
@@ -153,13 +172,13 @@ export function SelectionScreen() {
 
     try {
       await actions.exportProjectArchive(projectId);
-      setProjectTransferNotice(`Downloaded archive for '${projectName}'.`);
-      setProjectTransferWarnings([]);
+      projectTransferNoticeTap.set(`Downloaded archive for '${projectName}'.`);
+      projectTransferWarningsTap.set([]);
     } catch (error) {
       console.warn("Failed exporting project archive", error);
       const message = error instanceof Error ? error.message : "Unknown export error.";
-      setProjectTransferNotice(`Warning: ${message}`);
-      setProjectTransferWarnings([]);
+      projectTransferNoticeTap.set(`Warning: ${message}`);
+      projectTransferWarningsTap.set([]);
     }
   };
 
@@ -170,13 +189,13 @@ export function SelectionScreen() {
 
     try {
       await actions.exportProjectDatasetsZip(projectId);
-      setProjectTransferNotice(`Downloaded dataset TSV zip for '${projectName}'.`);
-      setProjectTransferWarnings([]);
+      projectTransferNoticeTap.set(`Downloaded dataset TSV zip for '${projectName}'.`);
+      projectTransferWarningsTap.set([]);
     } catch (error) {
       console.warn("Failed exporting dataset zip", error);
       const message = error instanceof Error ? error.message : "Unknown zip export error.";
-      setProjectTransferNotice(`Warning: ${message}`);
-      setProjectTransferWarnings([]);
+      projectTransferNoticeTap.set(`Warning: ${message}`);
+      projectTransferWarningsTap.set([]);
     }
   };
 
@@ -196,7 +215,7 @@ export function SelectionScreen() {
       const warningCount = report.warnings.length;
       const suffix = warningCount > 0 ? ` with ${warningCount} warning(s).` : ".";
       const importType = report.mode === "krona-html" ? "Krona HTML project" : "project archive";
-      setProjectTransferNotice(
+      projectTransferNoticeTap.set(
         `Imported ${importType} '${report.projectName}' (${report.datasetCount} dataset(s))${suffix}`,
       );
       const warningLines = report.warnings.slice(0, MAX_TRANSFER_WARNINGS).map(formatWarning);
@@ -205,12 +224,12 @@ export function SelectionScreen() {
           `... ${report.warnings.length - MAX_TRANSFER_WARNINGS} additional warning(s) not shown.`,
         );
       }
-      setProjectTransferWarnings(warningLines);
+      projectTransferWarningsTap.set(warningLines);
     } catch (error) {
       console.warn("Failed importing project archive", error);
       const message = error instanceof Error ? error.message : "Unknown import error.";
-      setProjectTransferNotice(`Warning: ${message}`);
-      setProjectTransferWarnings([]);
+      projectTransferNoticeTap.set(`Warning: ${message}`);
+      projectTransferWarningsTap.set([]);
     }
   };
 
@@ -221,28 +240,28 @@ export function SelectionScreen() {
     if (!project) {
       return;
     }
-    setDeleteDialogTarget({
+    deleteDialogTargetTap.set({
       kind: "project",
       projectId,
       projectName: project.name,
     });
-    setDeleteConfirmText("");
+    deleteConfirmTextTap.set("");
   };
 
   const onRequestDeleteAllProjects = () => {
     if (projects.length === 0) {
       return;
     }
-    setDeleteDialogTarget({
+    deleteDialogTargetTap.set({
       kind: "all",
       projectCount: projects.length,
     });
-    setDeleteConfirmText("");
+    deleteConfirmTextTap.set("");
   };
 
   const onCancelDeleteProject = () => {
-    setDeleteDialogTarget(null);
-    setDeleteConfirmText("");
+    deleteDialogTargetTap.set(null);
+    deleteConfirmTextTap.set("");
   };
 
   const onConfirmDeleteProject = async () => {
@@ -253,17 +272,17 @@ export function SelectionScreen() {
     try {
       if (deleteDialogTarget.kind === "project") {
         await actions.deleteProject(deleteDialogTarget.projectId);
-        setProjectTransferNotice(`Deleted project '${deleteDialogTarget.projectName}'.`);
+        projectTransferNoticeTap.set(`Deleted project '${deleteDialogTarget.projectName}'.`);
       } else {
         await actions.deleteAllProjects();
-        setProjectTransferNotice(
+        projectTransferNoticeTap.set(
           `Deleted ${deleteDialogTarget.projectCount} project(s) from this browser.`,
         );
       }
     } catch (error) {
       console.warn("Failed deleting project", error);
       const message = error instanceof Error ? error.message : "Unknown delete error.";
-      setProjectTransferNotice(`Warning: ${message}`);
+      projectTransferNoticeTap.set(`Warning: ${message}`);
     } finally {
       onCancelDeleteProject();
     }
@@ -280,22 +299,22 @@ export function SelectionScreen() {
         JSON.stringify(payload, null, 2),
         "application/json",
       );
-      setProjectTransferNotice(`Downloaded dataset '${dataset.name}' JSON.`);
+      projectTransferNoticeTap.set(`Downloaded dataset '${dataset.name}' JSON.`);
     } catch (error) {
       console.warn("Failed exporting dataset JSON", error);
       const message = error instanceof Error ? error.message : "Unknown dataset export error.";
-      setProjectTransferNotice(`Warning: ${message}`);
+      projectTransferNoticeTap.set(`Warning: ${message}`);
     }
   };
 
   const onStartProjectRename = (projectId: string, currentName: string) => {
-    setEditingProjectId(projectId);
-    setEditingProjectName(currentName);
+    editingProjectIdTap.set(projectId);
+    editingProjectNameTap.set(currentName);
   };
 
   const onCancelProjectRename = () => {
-    setEditingProjectId(null);
-    setEditingProjectName("");
+    editingProjectIdTap.set(null);
+    editingProjectNameTap.set("");
   };
 
   const onCommitProjectRename = async (projectId: string) => {
@@ -312,13 +331,13 @@ export function SelectionScreen() {
   };
 
   const onStartDatasetRename = (datasetId: string, currentName: string) => {
-    setEditingDatasetId(datasetId);
-    setEditingDatasetName(currentName);
+    editingDatasetIdTap.set(datasetId);
+    editingDatasetNameTap.set(currentName);
   };
 
   const onCancelDatasetRename = () => {
-    setEditingDatasetId(null);
-    setEditingDatasetName("");
+    editingDatasetIdTap.set(null);
+    editingDatasetNameTap.set("");
   };
 
   const onCommitDatasetRename = async (datasetId: string) => {
@@ -372,9 +391,9 @@ export function SelectionScreen() {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (files.length === 0) {
-      setImportFileSources([]);
-      setImportParsedSourceNames([]);
-      setImportParseIssues([]);
+      importFileSourcesTap.set([]);
+      importParsedSourceNamesTap.set([]);
+      importParseIssuesTap.set([]);
       return;
     }
     const nextSources = await Promise.all(
@@ -384,9 +403,9 @@ export function SelectionScreen() {
         content: await file.text(),
       })),
     );
-    setImportFileSources(nextSources);
-    setImportParsedSourceNames([]);
-    setImportParseIssues([]);
+    importFileSourcesTap.set(nextSources);
+    importParsedSourceNamesTap.set([]);
+    importParseIssuesTap.set([]);
     importSourceTap?.set(nextSources[0] ?? null);
   };
 
@@ -405,9 +424,9 @@ export function SelectionScreen() {
         name: nameFromUrl,
         content,
       });
-      setImportFileSources([]);
-      setImportParsedSourceNames([]);
-      setImportParseIssues([]);
+      importFileSourcesTap.set([]);
+      importParsedSourceNamesTap.set([]);
+      importParseIssuesTap.set([]);
     } catch (error) {
       console.error("Failed loading URL source", error);
     }
@@ -419,11 +438,11 @@ export function SelectionScreen() {
       return;
     }
     const parseResult = await actions.parsePreview();
-    setImportParsedSourceNames((current) => {
+    importParsedSourceNamesTap.update((current) => {
       const withoutSource = current.filter((name) => name !== source.name);
       return parseResult.canApply ? [...withoutSource, source.name] : withoutSource;
     });
-    setImportParseIssues((current) => {
+    importParseIssuesTap.update((current) => {
       const withoutSource = current.filter((issue) => !issue.startsWith(`${source.name}:`));
       if (parseResult.canApply) {
         return withoutSource;
@@ -439,8 +458,8 @@ export function SelectionScreen() {
     }
     const sourcesToParse = selectedImportSources;
     if (sourcesToParse.length === 0) {
-      setImportParsedSourceNames([]);
-      setImportParseIssues(["Select one or more files (or a URL) before parsing."]);
+      importParsedSourceNamesTap.set([]);
+      importParseIssuesTap.set(["Select one or more files (or a URL) before parsing."]);
       return;
     }
 
@@ -458,8 +477,8 @@ export function SelectionScreen() {
       }
     }
 
-    setImportParsedSourceNames(parsedSourceNames);
-    setImportParseIssues(parseIssues);
+    importParsedSourceNamesTap.set(parsedSourceNames);
+    importParseIssuesTap.set(parseIssues);
 
     const preferredSource =
       (activeImportSourceName
@@ -492,7 +511,7 @@ export function SelectionScreen() {
       await actions.createProject(nextProjectName);
     }
 
-    setImportApplyingBatch(true);
+    importApplyingBatchTap.set(true);
     const loadedSourceNames: string[] = [];
     const parseIssues: string[] = [];
     try {
@@ -511,11 +530,11 @@ export function SelectionScreen() {
         loadedSourceNames.push(source.name);
       }
     } finally {
-      setImportApplyingBatch(false);
+      importApplyingBatchTap.set(false);
     }
 
-    setImportParsedSourceNames(loadedSourceNames);
-    setImportParseIssues(parseIssues);
+    importParsedSourceNamesTap.set(loadedSourceNames);
+    importParseIssuesTap.set(parseIssues);
 
     if (parseIssues.length === 0 && loadedSourceNames.length > 0) {
       importPopoverOpenTap?.set(false);
@@ -527,11 +546,11 @@ export function SelectionScreen() {
     <div className="app-shell">
       <div className="app-frame">
         <header className="panel row page-title-row">
-          <button className="title-link-button" onClick={() => setHelpPopoverOpen(true)}>
+          <button className="title-link-button" onClick={() => helpPopoverOpenTap.set(true)}>
             <img className="title-logo-mark" src={logoSrc} alt="" aria-hidden="true" />
             <span>Jowna - data visualizer</span>
           </button>
-          <button className="ghost" onClick={() => setHelpPopoverOpen(true)}>
+          <button className="ghost" onClick={() => helpPopoverOpenTap.set(true)}>
             Help
           </button>
         </header>
@@ -630,7 +649,7 @@ export function SelectionScreen() {
                           className="project-name-input"
                           autoFocus
                           value={editingProjectName}
-                          onChange={(event) => setEditingProjectName(event.target.value)}
+                          onChange={(event) => editingProjectNameTap.set(event.target.value)}
                           onClick={(event) => event.stopPropagation()}
                           onBlur={() => {
                             void onCommitProjectRename(project.id);
@@ -720,7 +739,7 @@ export function SelectionScreen() {
                                   className="dataset-name-input"
                                   autoFocus
                                   value={editingDatasetName}
-                                  onChange={(event) => setEditingDatasetName(event.target.value)}
+                                  onChange={(event) => editingDatasetNameTap.set(event.target.value)}
                                   onBlur={() => {
                                     void onCommitDatasetRename(dataset.id);
                                   }}
@@ -1075,7 +1094,7 @@ export function SelectionScreen() {
         </div>
       )}
 
-      <HelpPopover open={helpPopoverOpen} onClose={() => setHelpPopoverOpen(false)} />
+      <HelpPopover open={helpPopoverOpen} onClose={() => helpPopoverOpenTap.set(false)} />
 
       {routeLoadError && (
         <div className="delete-confirm-backdrop" onClick={onDismissRouteLoadError}>
@@ -1126,7 +1145,7 @@ export function SelectionScreen() {
               autoFocus
               value={deleteConfirmText}
               placeholder="delete"
-              onChange={(event) => setDeleteConfirmText(event.target.value)}
+              onChange={(event) => deleteConfirmTextTap.set(event.target.value)}
             />
             <div className="row delete-confirm-actions">
               <button className="ghost" onClick={onCancelDeleteProject}>

@@ -8,26 +8,26 @@ export function ChartToolbar() {
       <div className="row">
         <button
           className="ghost"
-          onClick={() => model.actions?.goBack()}
+          onClick={model.goBackAction}
           disabled={model.historyIndex <= 0}
         >
           Back
         </button>
         <button
           className="ghost"
-          onClick={() => model.actions?.goForward()}
+          onClick={model.goForwardAction}
           disabled={model.historyIndex >= model.history.length - 1}
         >
           Forward
         </button>
         <button
           className="ghost"
-          onClick={() => model.parentFocusPath && model.actions?.focusPath(model.parentFocusPath)}
+          onClick={() => model.parentFocusPath && model.focusPathAction(model.parentFocusPath)}
           disabled={!model.parentFocusPath}
         >
           Up
         </button>
-        <button className="ghost" onClick={() => model.actions?.clearFocus()}>
+        <button className="ghost" onClick={model.clearFocusAction}>
           Reset
         </button>
         <button className="ghost" onClick={model.onToggleDetailsPanel}>

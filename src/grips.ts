@@ -24,6 +24,22 @@ export interface ProjectImportReport {
   warnings: ImportWarning[];
 }
 
+export type SelectionDeleteDialogTarget =
+  | {
+      kind: "project";
+      projectId: string;
+      projectName: string;
+    }
+  | {
+      kind: "all";
+      projectCount: number;
+    };
+
+export interface ChartDimensionDrafts {
+  width: string;
+  height: string;
+}
+
 export interface JownaActions {
   refreshProjects: () => Promise<void>;
   createProject: (name: string) => Promise<void>;
@@ -225,6 +241,42 @@ export const ROUTE_LOAD_ERROR = defineGrip<string | null>("RouteLoadError", null
 export const ROUTE_LOAD_ERROR_TAP =
   defineGrip<AtomTapHandle<string | null>>("RouteLoadError.Tap");
 
+// Selection UI state
+export const SELECTION_EDITING_PROJECT_ID = defineGrip<string | null>(
+  "SelectionEditingProjectId",
+  null,
+);
+export const SELECTION_EDITING_PROJECT_NAME = defineGrip<string>("SelectionEditingProjectName", "");
+export const SELECTION_EDITING_DATASET_ID = defineGrip<string | null>(
+  "SelectionEditingDatasetId",
+  null,
+);
+export const SELECTION_EDITING_DATASET_NAME = defineGrip<string>("SelectionEditingDatasetName", "");
+export const SELECTION_PROJECT_TRANSFER_NOTICE = defineGrip<string | null>(
+  "SelectionProjectTransferNotice",
+  null,
+);
+export const SELECTION_PROJECT_TRANSFER_WARNINGS = defineGrip<string[]>(
+  "SelectionProjectTransferWarnings",
+  [],
+);
+export const SELECTION_DELETE_DIALOG_TARGET = defineGrip<SelectionDeleteDialogTarget | null>(
+  "SelectionDeleteDialogTarget",
+  null,
+);
+export const SELECTION_DELETE_CONFIRM_TEXT = defineGrip<string>("SelectionDeleteConfirmText", "");
+export const SELECTION_IMPORT_FILE_SOURCES = defineGrip<ImportSource[]>("SelectionImportFileSources", []);
+export const SELECTION_IMPORT_PARSED_SOURCE_NAMES = defineGrip<string[]>(
+  "SelectionImportParsedSourceNames",
+  [],
+);
+export const SELECTION_IMPORT_PARSE_ISSUES = defineGrip<string[]>("SelectionImportParseIssues", []);
+export const SELECTION_IMPORT_APPLYING_BATCH = defineGrip<boolean>(
+  "SelectionImportApplyingBatch",
+  false,
+);
+export const SELECTION_HELP_POPOVER_OPEN = defineGrip<boolean>("SelectionHelpPopoverOpen", false);
+
 // Chart
 export const CHART_SETTINGS_STATE = defineGrip<ChartSettings>(
   "ChartSettingsState",
@@ -255,6 +307,27 @@ export const CHART_HISTORY_INDEX = defineGrip<number>("ChartHistoryIndex", -1);
 export const CHART_HISTORY_INDEX_TAP = defineGrip<AtomTapHandle<number>>("ChartHistoryIndex.Tap");
 
 export const CHART_LAYOUT = defineGrip<ChartLayoutResult | null>("ChartLayout", null);
+
+// Chart UI state (typically scoped in a chart-specific child context)
+export const CHART_UI_SETTINGS_POPOVER_OPEN = defineGrip<boolean>("ChartUiSettingsPopoverOpen", false);
+export const CHART_UI_DETAILS_PANEL_COLLAPSED = defineGrip<boolean>(
+  "ChartUiDetailsPanelCollapsed",
+  false,
+);
+export const CHART_UI_OPEN_MEMBERS_POPOVER_FOR_PATH = defineGrip<string | null>(
+  "ChartUiOpenMembersPopoverForPath",
+  null,
+);
+export const CHART_UI_SHOW_KEY_CALLOUTS = defineGrip<boolean>("ChartUiShowKeyCallouts", true);
+export const CHART_UI_HELP_POPOVER_OPEN = defineGrip<boolean>("ChartUiHelpPopoverOpen", false);
+export const CHART_UI_DIMENSION_DRAFTS = defineGrip<ChartDimensionDrafts>("ChartUiDimensionDrafts", {
+  width: "",
+  height: "",
+});
+export const CHART_UI_ACTIVE_DIMENSION_DRAFT = defineGrip<"width" | "height" | null>(
+  "ChartUiActiveDimensionDraft",
+  null,
+);
 
 // Actions
 export const JOWNA_ACTIONS = defineGrip<JownaActions>("JownaActions");
