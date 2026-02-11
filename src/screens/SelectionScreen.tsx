@@ -74,6 +74,7 @@ export function SelectionScreen() {
   const [importParseIssues, setImportParseIssues] = useState<string[]>([]);
   const [importApplyingBatch, setImportApplyingBatch] = useState(false);
   const [helpPopoverOpen, setHelpPopoverOpen] = useState(false);
+  const logoSrc = `${import.meta.env.BASE_URL}jowna-logo.svg`;
 
   const selectedImportSources =
     importFileSources.length > 0 ? importFileSources : importSource ? [importSource] : [];
@@ -519,7 +520,8 @@ export function SelectionScreen() {
       <div className="app-frame">
         <header className="panel row page-title-row">
           <button className="title-link-button" onClick={() => setHelpPopoverOpen(true)}>
-            Jowna - data visualizer
+            <img className="title-logo-mark" src={logoSrc} alt="" aria-hidden="true" />
+            <span>Jowna - data visualizer</span>
           </button>
           <button className="ghost" onClick={() => setHelpPopoverOpen(true)}>
             Help

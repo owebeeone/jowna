@@ -1,5 +1,7 @@
 # Jowna - Data Visualizer
 
+![Jowna logo](public/jowna-logo.svg)
+
 - Project: <https://github.com/owebeeone/jowna>
 - Live demo: <https://owebeeone.github.io/jowna>
 - Inspired by Krona: <https://github.com/marbl/Krona/wiki>

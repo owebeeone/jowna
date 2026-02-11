@@ -59,11 +59,21 @@
   font-weight: 700;
   padding: 0;
   text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .title-link-button:hover {
   color: #1f6f4d;
   text-decoration: underline;
+}
+
+.title-logo-mark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: block;
 }
 
 .row {
@@ -453,6 +463,19 @@ button:disabled {
   justify-content: space-between;
   flex-wrap: wrap;
   row-gap: 10px;
+}
+
+.chart-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-title-logo {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: block;
 }
 
 .chart-header-actions {

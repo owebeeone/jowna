@@ -1,11 +1,13 @@
 import { useChartScreenContext } from "../context";
+import { JownaLogoIcon } from "./JownaLogoIcon";
 
 export function ChartHeader() {
   const model = useChartScreenContext();
 
   return (
     <header className="panel row chart-header">
-      <div>
+      <div className="chart-header-title">
+        <JownaLogoIcon className="chart-title-logo" />
         <h1 style={{ marginBottom: 0 }}>Chart View</h1>
       </div>
       <div className="row chart-header-actions">
@@ -33,7 +35,7 @@ export function ChartHeader() {
         <button
           className="ghost"
           onClick={model.onDownloadDatasetsZip}
-          disabled={!model.activeProject || model.datasets.length === 0}
+          disabled={model.datasets.length === 0}
         >
           Download Zip
         </button>
