@@ -1,0 +1,365 @@
+{
+  "format": "jowna.project",
+  "version": 1,
+  "schemaVersion": "1.0.0",
+  "exportedAt": "2026-02-11T15:16:48.625Z",
+  "project": {
+    "id": "project-09c194dd-b863-4438-8f55-ef2dd9b490b1",
+    "name": "xml",
+    "createdAt": "2026-02-11T15:14:54.542Z",
+    "updatedAt": "2026-02-11T15:14:54.542Z",
+    "datasetIds": [
+      "dataset-32494e30-5daa-42fc-aaa1-42c96ecf3aef",
+      "dataset-269b9375-3479-4111-97fc-41fa7632473f"
+    ],
+    "activeDatasetId": "dataset-32494e30-5daa-42fc-aaa1-42c96ecf3aef",
+    "chartSettings": {
+      "background": "#f6f8f7",
+      "borderWidth": 0,
+      "borderColor": "#b7c2bc",
+      "wedgeStrokeWidth": 0.6,
+      "wedgeStrokeColor": "#321957",
+      "fontFamily": "sans-serif",
+      "fontSizePx": 8,
+      "width": "fit",
+      "height": "fit",
+      "colorScheme": [
+        "#0f6b48",
+        "#2a9d8f",
+        "#e9c46a",
+        "#f4a261",
+        "#e76f51"
+      ]
+    }
+  },
+  "datasets": [
+    {
+      "id": "dataset-32494e30-5daa-42fc-aaa1-42c96ecf3aef",
+      "projectId": "project-09c194dd-b863-4438-8f55-ef2dd9b490b1",
+      "name": "Brand X",
+      "createdAt": "2026-02-11T15:14:54.542Z",
+      "updatedAt": "2026-02-11T15:14:54.542Z",
+      "tree": {
+        "name": "Granola serving",
+        "magnitude": 55,
+        "children": [
+          {
+            "name": "Protein",
+            "magnitude": 5,
+            "explicitMagnitude": 5
+          },
+          {
+            "name": "Carbohydrates",
+            "magnitude": 39,
+            "children": [
+              {
+                "name": "Sugars",
+                "magnitude": 3,
+                "explicitMagnitude": 3
+              },
+              {
+                "name": "Dietary fiber",
+                "magnitude": 4,
+                "attributes": {
+                  "dva": "16"
+                },
+                "explicitMagnitude": 4
+              }
+            ],
+            "attributes": {
+              "dva": "13"
+            },
+            "explicitMagnitude": 39
+          },
+          {
+            "name": "Fats",
+            "magnitude": 8,
+            "children": [
+              {
+                "name": "Saturated fat",
+                "magnitude": 2,
+                "attributes": {
+                  "dva": "10"
+                },
+                "explicitMagnitude": 2
+              },
+              {
+                "name": "Unsaturated fat",
+                "magnitude": 6,
+                "children": [
+                  {
+                    "name": "Polyunsaturated fat",
+                    "magnitude": 3,
+                    "explicitMagnitude": 3
+                  },
+                  {
+                    "name": "Monounsaturated fat",
+                    "magnitude": 3,
+                    "explicitMagnitude": 3
+                  }
+                ],
+                "explicitMagnitude": 6
+              }
+            ],
+            "attributes": {
+              "dva": "12"
+            },
+            "explicitMagnitude": 8
+          }
+        ],
+        "explicitMagnitude": 55
+      },
+      "sourceFileName": "xml.krona.html",
+      "flatTable": [
+        {
+          "rowId": "row-1",
+          "sourceRow": 1,
+          "magnitude": 5,
+          "path": [
+            "Granola serving",
+            "Protein"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {}
+        },
+        {
+          "rowId": "row-2",
+          "sourceRow": 2,
+          "magnitude": 3,
+          "path": [
+            "Granola serving",
+            "Carbohydrates",
+            "Sugars"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {}
+        },
+        {
+          "rowId": "row-3",
+          "sourceRow": 3,
+          "magnitude": 4,
+          "path": [
+            "Granola serving",
+            "Carbohydrates",
+            "Dietary fiber"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {
+            "dva": "16"
+          }
+        },
+        {
+          "rowId": "row-4",
+          "sourceRow": 4,
+          "magnitude": 2,
+          "path": [
+            "Granola serving",
+            "Fats",
+            "Saturated fat"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {
+            "dva": "10"
+          }
+        },
+        {
+          "rowId": "row-5",
+          "sourceRow": 5,
+          "magnitude": 3,
+          "path": [
+            "Granola serving",
+            "Fats",
+            "Unsaturated fat",
+            "Polyunsaturated fat"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {}
+        },
+        {
+          "rowId": "row-6",
+          "sourceRow": 6,
+          "magnitude": 3,
+          "path": [
+            "Granola serving",
+            "Fats",
+            "Unsaturated fat",
+            "Monounsaturated fat"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {}
+        }
+      ],
+      "importWarnings": []
+    },
+    {
+      "id": "dataset-269b9375-3479-4111-97fc-41fa7632473f",
+      "projectId": "project-09c194dd-b863-4438-8f55-ef2dd9b490b1",
+      "name": "Brand Y",
+      "createdAt": "2026-02-11T15:14:54.542Z",
+      "updatedAt": "2026-02-11T15:14:54.542Z",
+      "tree": {
+        "name": "Granola serving",
+        "magnitude": 55,
+        "children": [
+          {
+            "name": "Protein",
+            "magnitude": 6,
+            "explicitMagnitude": 6
+          },
+          {
+            "name": "Carbohydrates",
+            "magnitude": 41,
+            "children": [
+              {
+                "name": "Sugars",
+                "magnitude": 5,
+                "explicitMagnitude": 5
+              },
+              {
+                "name": "Dietary fiber",
+                "magnitude": 8,
+                "attributes": {
+                  "dva": "32"
+                },
+                "explicitMagnitude": 8
+              }
+            ],
+            "attributes": {
+              "dva": "14"
+            },
+            "explicitMagnitude": 41
+          },
+          {
+            "name": "Fats",
+            "magnitude": 7,
+            "children": [
+              {
+                "name": "Saturated fat",
+                "magnitude": 1,
+                "attributes": {
+                  "dva": "5"
+                },
+                "explicitMagnitude": 1
+              },
+              {
+                "name": "Unsaturated fat",
+                "magnitude": 6,
+                "children": [
+                  {
+                    "name": "Polyunsaturated fat",
+                    "magnitude": 4,
+                    "explicitMagnitude": 4
+                  },
+                  {
+                    "name": "Monounsaturated fat",
+                    "magnitude": 2,
+                    "explicitMagnitude": 2
+                  }
+                ],
+                "explicitMagnitude": 6
+              }
+            ],
+            "attributes": {
+              "dva": "9"
+            },
+            "explicitMagnitude": 7
+          }
+        ],
+        "explicitMagnitude": 55
+      },
+      "sourceFileName": "xml.krona.html",
+      "flatTable": [
+        {
+          "rowId": "row-1",
+          "sourceRow": 1,
+          "magnitude": 6,
+          "path": [
+            "Granola serving",
+            "Protein"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {}
+        },
+        {
+          "rowId": "row-2",
+          "sourceRow": 2,
+          "magnitude": 5,
+          "path": [
+            "Granola serving",
+            "Carbohydrates",
+            "Sugars"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {}
+        },
+        {
+          "rowId": "row-3",
+          "sourceRow": 3,
+          "magnitude": 8,
+          "path": [
+            "Granola serving",
+            "Carbohydrates",
+            "Dietary fiber"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {
+            "dva": "32"
+          }
+        },
+        {
+          "rowId": "row-4",
+          "sourceRow": 4,
+          "magnitude": 1,
+          "path": [
+            "Granola serving",
+            "Fats",
+            "Saturated fat"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {
+            "dva": "5"
+          }
+        },
+        {
+          "rowId": "row-5",
+          "sourceRow": 5,
+          "magnitude": 4,
+          "path": [
+            "Granola serving",
+            "Fats",
+            "Unsaturated fat",
+            "Polyunsaturated fat"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {}
+        },
+        {
+          "rowId": "row-6",
+          "sourceRow": 6,
+          "magnitude": 2,
+          "path": [
+            "Granola serving",
+            "Fats",
+            "Unsaturated fat",
+            "Monounsaturated fat"
+          ],
+          "url": null,
+          "description": null,
+          "attributes": {}
+        }
+      ],
+      "importWarnings": []
+    }
+  ]
+}
