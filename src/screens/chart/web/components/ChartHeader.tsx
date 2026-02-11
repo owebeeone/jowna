@@ -35,7 +35,7 @@ export function ChartHeader() {
         <button
           className="ghost"
           onClick={model.onDownloadDatasetsZip}
-          disabled={!model.activeProject || model.datasets.length === 0}
+          disabled={model.datasets.length === 0}
         >
           Download Zip
         </button>

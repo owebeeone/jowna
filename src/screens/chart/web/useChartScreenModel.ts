@@ -303,15 +303,36 @@ export function useChartScreenModel() {
   };
 
   const onDownloadDatasetsZip = () => {
-    if (!activeProject || datasets.length === 0) {
+    if (datasets.length === 0) {
       return;
     }
-    const blob = createProjectDatasetsZipBlob({
-      project: activeProject,
-      datasets,
-      exportedAt: new Date().toISOString(),
-    });
-    downloadBlobFile(toDatasetsZipFileName(activeProject.name), blob);
+
+    const fallbackProject = {
+      id: "project-static",
+      name: "Jowna Project",
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date().toISOString(),
+      datasetIds: datasets.map((dataset) => dataset.id),
+      activeDatasetId: activeDatasetId ?? datasets[0]?.id ?? null,
+      chartSettings: resolvedChartSettings,
+    };
+
+    const projectForZip = activeProject ?? fallbackProject;
+
+    try {
+      const blob = createProjectDatasetsZipBlob({
+        project: projectForZip,
+        datasets,
+        exportedAt: new Date().toISOString(),
+      });
+      downloadBlobFile(toDatasetsZipFileName(projectForZip.name), blob);
+    } catch (error) {
+      console.warn("Failed generating dataset zip", error);
+      const message = error instanceof Error ? error.message : "Failed generating dataset zip.";
+      if (typeof window !== "undefined") {
+        window.alert(message);
+      }
+    }
   };
 
   const onToggleMembersPopover = () => {
