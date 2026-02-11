@@ -3,8 +3,13 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { ChartSettings } from "../../../domain";
 import {
   createStandaloneChartDocument,
+  STATIC_CHART_PAYLOAD_GLOBAL,
   toStandaloneChartFileName,
 } from "../../../features/chart";
+import {
+  createProjectDatasetsZipBlob,
+  toDatasetsZipFileName,
+} from "../../../features/file-manager";
 import {
   ACTIVE_DATASET,
   ACTIVE_DATASET_ID,
@@ -43,7 +48,7 @@ import {
   resolveRenderDepth,
 } from "../common";
 import { CHART_FONT_OPTIONS } from "./constants";
-import { downloadHtmlFile, downloadSvgFile, toSvgFileName } from "./download";
+import { downloadBlobFile, downloadHtmlFile, downloadSvgFile, toSvgFileName } from "./download";
 
 export function useChartScreenModel() {
   const actions = useGrip(JOWNA_ACTIONS);
@@ -64,6 +69,7 @@ export function useChartScreenModel() {
   const [detailsPanelCollapsed, setDetailsPanelCollapsed] = useState(false);
   const [openMembersPopoverForPath, setOpenMembersPopoverForPath] = useState<string | null>(null);
   const [showKeyCallouts, setShowKeyCallouts] = useState(true);
+  const [helpPopoverOpen, setHelpPopoverOpen] = useState(false);
   const [dimensionDrafts, setDimensionDrafts] = useState<{ width: string; height: string }>({
     width: "",
     height: "",
@@ -119,13 +125,13 @@ export function useChartScreenModel() {
     () => createDatasetSelectorState(datasets, activeDatasetId),
     [activeDatasetId, datasets],
   );
+  const isStaticMode =
+    typeof window !== "undefined" &&
+    Object.prototype.hasOwnProperty.call(window, STATIC_CHART_PAYLOAD_GLOBAL);
 
   const kronaColors = useMemo(
     () =>
-      buildKronaColorMap(
-        chartLayout ?? null,
-        resolvedChartSettings.collapseRedundant !== false,
-      ),
+      buildKronaColorMap(chartLayout ?? null, resolvedChartSettings.collapseRedundant !== false),
     [chartLayout, resolvedChartSettings.collapseRedundant],
   );
 
@@ -296,6 +302,18 @@ export function useChartScreenModel() {
     downloadSvgFile(toSvgFileName(dataset.name), chartSvgRef.current);
   };
 
+  const onDownloadDatasetsZip = () => {
+    if (!activeProject || datasets.length === 0) {
+      return;
+    }
+    const blob = createProjectDatasetsZipBlob({
+      project: activeProject,
+      datasets,
+      exportedAt: new Date().toISOString(),
+    });
+    downloadBlobFile(toDatasetsZipFileName(activeProject.name), blob);
+  };
+
   const onToggleMembersPopover = () => {
     if (!activePathKey) {
       return;
@@ -322,6 +340,14 @@ export function useChartScreenModel() {
 
   const closeSettingsPopover = () => {
     setSettingsPopoverOpen(false);
+  };
+
+  const openHelpPopover = () => {
+    setHelpPopoverOpen(true);
+  };
+
+  const closeHelpPopover = () => {
+    setHelpPopoverOpen(false);
   };
 
   const onSelectDataset = (nextDatasetId: string) => {
@@ -384,6 +410,7 @@ export function useChartScreenModel() {
     heightInputValue,
     chartFontOptions,
     datasetSelector,
+    isStaticMode,
     kronaColors,
     resolvedFocusPath,
     activePath,
@@ -414,12 +441,16 @@ export function useChartScreenModel() {
     onDimensionInputBlur,
     onDownloadHtml,
     onDownloadSvg,
+    onDownloadDatasetsZip,
     onToggleMembersPopover,
     onCloseMembersPopover,
     onToggleDetailsPanel,
     onToggleKeyCallouts,
     openSettingsPopover,
     closeSettingsPopover,
+    helpPopoverOpen,
+    openHelpPopover,
+    closeHelpPopover,
     onSelectDataset,
   };
 }

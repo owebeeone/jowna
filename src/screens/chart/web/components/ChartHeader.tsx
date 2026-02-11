@@ -25,8 +25,17 @@ export function ChartHeader() {
         <button className="ghost" onClick={model.openSettingsPopover}>
           Chart Settings
         </button>
-        <button className="ghost" onClick={model.onDownloadHtml} disabled={!model.dataset}>
-          Download HTML
+        {!model.isStaticMode && (
+          <button className="ghost" onClick={model.onDownloadHtml} disabled={!model.dataset}>
+            Download HTML
+          </button>
+        )}
+        <button
+          className="ghost"
+          onClick={model.onDownloadDatasetsZip}
+          disabled={!model.activeProject || model.datasets.length === 0}
+        >
+          Download Zip
         </button>
         <button
           className="ghost"
@@ -35,9 +44,14 @@ export function ChartHeader() {
         >
           Download SVG
         </button>
-        <button className="ghost" onClick={() => model.actions?.backToSelection()}>
-          Back to Selection
+        <button className="ghost" onClick={model.openHelpPopover}>
+          Help
         </button>
+        {!model.isStaticMode && (
+          <button className="ghost" onClick={() => model.actions?.backToSelection()}>
+            Back to Selection
+          </button>
+        )}
       </div>
     </header>
   );

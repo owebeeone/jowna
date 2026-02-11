@@ -175,6 +175,7 @@ export function registerStaticChartTaps(payload: StaticChartPayload): void {
     createProject: async () => {},
     copyProject: async () => {},
     deleteProject: async () => {},
+    deleteAllProjects: async () => {},
     renameProject: async () => {},
     exportProjectArchive: async () => {},
     exportProjectDatasetsZip: async () => {},

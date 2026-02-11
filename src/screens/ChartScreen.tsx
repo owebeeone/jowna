@@ -1,6 +1,7 @@
 import {
   ChartBreadcrumbs,
   ChartHeader,
+  ChartHelpPopover,
   ChartMainLayout,
   ChartScreenProvider,
   ChartSettingsPopover,
@@ -24,6 +25,7 @@ export function ChartScreen() {
 
         <MembersPopover />
         <ChartSettingsPopover />
+        <ChartHelpPopover />
       </div>
     </ChartScreenProvider>
   );
