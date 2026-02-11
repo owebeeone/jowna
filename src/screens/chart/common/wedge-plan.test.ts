@@ -286,4 +286,40 @@ describe("createWedgeRenderPlan", () => {
     expect(grouped?.hiddenCount).toBe(2);
     expect(grouped?.node.name).toBe("2 more");
   });
+
+  it("keeps residual parent wedge names in internal non-bracket form", () => {
+    const layout: ChartLayoutResult = {
+      totalMagnitude: 100,
+      nodes: [
+        {
+          path: ["Root"],
+          name: "Root",
+          depth: 0,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "Bacteria"],
+          name: "Bacteria",
+          depth: 1,
+          magnitude: 100,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+        },
+        {
+          path: ["Root", "Bacteria", "Known"],
+          name: "Known",
+          depth: 2,
+          magnitude: 60,
+          startAngle: 0,
+          endAngle: Math.PI * 1.2,
+        },
+      ],
+    };
+
+    const plan = createWedgeRenderPlan(layout, 3, 11);
+    const residual = plan.visibleNodes.find((entry) => entry.node.name.startsWith("other "));
+    expect(residual?.node.name).toBe("other Bacteria");
+  });
 });

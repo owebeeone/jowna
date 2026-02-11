@@ -71,8 +71,7 @@ export function createKeyCallouts(input: KeyCalloutLayoutInput): KeyCalloutRende
     const boxLeft = input.width - keySize - margin;
     const textY = offset + keySize / 2;
 
-    const percentage = formatKronaPercentage((entry.magnitude / input.totalMagnitude) * 100);
-    const label = `${entry.name}   ${percentage}%`;
+    const label = formatKronaKeyLabel(entry.name, entry.magnitude, input.totalMagnitude);
     const keyNameWidth = measureText(label, input.fontSizePx);
     const textLeft = boxLeft - keyBuffer - keyNameWidth - input.fontSizePx / 2;
     let labelLeft = textLeft;
@@ -272,16 +271,6 @@ function keyLineAngle(
   return tanAngle;
 }
 
-function formatKronaPercentage(value: number): string {
-  if (!Number.isFinite(value)) {
-    return "0";
-  }
-  if (value >= 1 || value <= -1) {
-    return value.toFixed(0);
-  }
-  return Number(value.toPrecision(1)).toString();
-}
-
 function measureText(text: string, fontSizePx: number): number {
   return text.length * fontSizePx * 0.58;
 }
@@ -296,3 +285,4 @@ function normalizeRadians(angle: number): number {
   }
   return normalized;
 }
+import { formatKronaKeyLabel } from "./text";

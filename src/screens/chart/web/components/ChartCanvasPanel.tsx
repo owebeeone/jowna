@@ -3,6 +3,9 @@ import {
   arcPath,
   createKeyCallouts,
   createHoverLabelTooltip,
+  formatKronaPercentageFromFraction,
+  formatKronaRounded,
+  toKronaDisplayName,
   createWedgeLabel,
   isUnclassifiedNodeName,
   pathEquals,
@@ -156,7 +159,7 @@ export function ChartCanvasPanel() {
                 const wedgeKey = entry.key;
                 const titleText = entry.isGroupedHidden
                   ? `${entry.hiddenCount} more`
-                  : `${node.path.join(" / ")}: ${node.magnitude.toLocaleString()}`;
+                  : `${toKronaDisplayName(node.name)}   ${formatKronaPercentageFromFraction((model.chartLayout?.totalMagnitude ?? 0) > 0 ? node.magnitude / (model.chartLayout?.totalMagnitude ?? 1) : 0)}%`;
 
                 return (
                   <g key={wedgeKey}>
@@ -255,10 +258,11 @@ export function ChartCanvasPanel() {
                   "Root"}
               </text>
               <text x={0} y={2} textAnchor="middle" className="chart-center-metric">
-                {model.activeMagnitude.toLocaleString()}
+                {formatKronaRounded(model.activeMagnitude)}
               </text>
               <text x={0} y={22} textAnchor="middle" className="chart-center-sub">
-                {model.activeShare.toFixed(1)}% of view
+                {formatKronaPercentageFromFraction((model.chartLayout?.totalMagnitude ?? 0) > 0 ? model.activeMagnitude / (model.chartLayout?.totalMagnitude ?? 1) : 0)}
+                %
               </text>
             </g>
             {visibleKeyCallouts.map((callout) => {

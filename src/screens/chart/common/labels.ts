@@ -1,5 +1,6 @@
 import type { ChartLayoutNode } from "../../../features/chart";
 import { normalizeDegrees } from "./geometry";
+import { ellipsizeKronaLabel, toKronaDisplayName } from "./text";
 
 export interface WedgeLabel {
   text: string;
@@ -57,8 +58,9 @@ export function createWedgeLabel(
     isOuterRing ? 4 : 6,
     Math.floor(availableTextLength / approximateCharWidth),
   );
-  const isTruncated = node.name.length > maxChars;
-  const text = ellipsize(node.name, maxChars);
+  const displayName = toKronaDisplayName(node.name);
+  const isTruncated = displayName.length > maxChars;
+  const text = ellipsizeKronaLabel(displayName, maxChars);
 
   let angle = kronaAngle;
   let adjustedRadius = radius;
@@ -90,7 +92,7 @@ export function createWedgeLabel(
 
   return {
     text,
-    fullText: node.name,
+    fullText: displayName,
     isTruncated,
     x: point.x,
     y: point.y,
@@ -116,13 +118,6 @@ export function createHoverLabelTooltip(label: WedgeLabel, fontSizePx: number): 
     textX: centerX,
     textY: centerY,
   };
-}
-
-function ellipsize(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
 function normalizeRadians(angle: number): number {

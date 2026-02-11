@@ -7,4 +7,5 @@ export * from "./geometry";
 export * from "./key-callouts";
 export * from "./labels";
 export * from "./path";
+export * from "./text";
 export * from "./wedge-plan";
