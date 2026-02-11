@@ -20,7 +20,11 @@ export function HelpPopover({ open, onClose }: HelpPopoverProps) {
         onClick={(event) => event.stopPropagation()}
       >
         <header className="help-popover-header">
-          <h2>About Jowna</h2>
+          <h2>
+            <a href="https://github.com/owebeeone/jowna" target="_blank" rel="noreferrer">
+              About Jowna
+            </a>
+          </h2>
           <button className="ghost popover-x" onClick={onClose} aria-label="Close help dialog">
             X
           </button>
@@ -42,6 +46,15 @@ export function HelpPopover({ open, onClose }: HelpPopoverProps) {
             <a href="https://github.com/owebeeone/jowna" target="_blank" rel="noreferrer">
               github.com/owebeeone/jowna
             </a>
+          </p>
+          <p>
+            Jowna is best suited to hierarchical categorical data with numeric magnitudes (counts,
+            abundances, sizes, scores) and path-like labels such as taxonomy, geography, org
+            structure, or any nested grouping.
+          </p>
+          <p>
+            Visual output is a Krona-style radial partition chart (sunburst / pie-style wedges),
+            where inner rings show higher-level groups and outer rings show more specific subgroups.
           </p>
           <ul className="warning-list">
             <li>

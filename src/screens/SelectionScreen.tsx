@@ -27,6 +27,17 @@ import {
   PROJECTS,
 } from "../grips";
 
+type DeleteDialogTarget =
+  | {
+      kind: "project";
+      projectId: string;
+      projectName: string;
+    }
+  | {
+      kind: "all";
+      projectCount: number;
+    };
+
 export function SelectionScreen() {
   const MAX_TRANSFER_WARNINGS = 120;
   const actions = useGrip(JOWNA_ACTIONS);
@@ -55,7 +66,7 @@ export function SelectionScreen() {
   const [editingDatasetName, setEditingDatasetName] = useState("");
   const [projectTransferNotice, setProjectTransferNotice] = useState<string | null>(null);
   const [projectTransferWarnings, setProjectTransferWarnings] = useState<string[]>([]);
-  const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
+  const [deleteDialogTarget, setDeleteDialogTarget] = useState<DeleteDialogTarget | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const projectArchiveInputRef = useRef<HTMLInputElement | null>(null);
   const [importFileSources, setImportFileSources] = useState<ImportSource[]>([]);
@@ -194,30 +205,52 @@ export function SelectionScreen() {
     }
   };
 
-  const pendingDeleteProject =
-    pendingDeleteProjectId !== null
-      ? (projects.find((project) => project.id === pendingDeleteProjectId) ?? null)
-      : null;
   const canConfirmDelete = deleteConfirmText.trim().toLowerCase() === "delete";
 
   const onRequestDeleteProject = (projectId: string) => {
-    setPendingDeleteProjectId(projectId);
+    const project = projects.find((entry) => entry.id === projectId);
+    if (!project) {
+      return;
+    }
+    setDeleteDialogTarget({
+      kind: "project",
+      projectId,
+      projectName: project.name,
+    });
+    setDeleteConfirmText("");
+  };
+
+  const onRequestDeleteAllProjects = () => {
+    if (projects.length === 0) {
+      return;
+    }
+    setDeleteDialogTarget({
+      kind: "all",
+      projectCount: projects.length,
+    });
     setDeleteConfirmText("");
   };
 
   const onCancelDeleteProject = () => {
-    setPendingDeleteProjectId(null);
+    setDeleteDialogTarget(null);
     setDeleteConfirmText("");
   };
 
   const onConfirmDeleteProject = async () => {
-    if (!pendingDeleteProject || !canConfirmDelete || !actions) {
+    if (!deleteDialogTarget || !canConfirmDelete || !actions) {
       return;
     }
 
     try {
-      await actions.deleteProject(pendingDeleteProject.id);
-      setProjectTransferNotice(`Deleted project '${pendingDeleteProject.name}'.`);
+      if (deleteDialogTarget.kind === "project") {
+        await actions.deleteProject(deleteDialogTarget.projectId);
+        setProjectTransferNotice(`Deleted project '${deleteDialogTarget.projectName}'.`);
+      } else {
+        await actions.deleteAllProjects();
+        setProjectTransferNotice(
+          `Deleted ${deleteDialogTarget.projectCount} project(s) from this browser.`,
+        );
+      }
     } catch (error) {
       console.warn("Failed deleting project", error);
       const message = error instanceof Error ? error.message : "Unknown delete error.";
@@ -524,6 +557,14 @@ export function SelectionScreen() {
               </button>
               <button className="ghost" onClick={onUploadProjectClick} disabled={!actions}>
                 Upload Project
+              </button>
+              <button
+                className="danger"
+                onClick={onRequestDeleteAllProjects}
+                disabled={!actions || projects.length === 0}
+                title="Delete all local projects and datasets from this browser."
+              >
+                Delete All
               </button>
               <ChartIconButton
                 onClick={() => actions?.openChart(activeDatasetId)}
@@ -1026,19 +1067,31 @@ export function SelectionScreen() {
 
       <HelpPopover open={helpPopoverOpen} onClose={() => setHelpPopoverOpen(false)} />
 
-      {pendingDeleteProject && (
+      {deleteDialogTarget && (
         <div className="delete-confirm-backdrop" onClick={onCancelDeleteProject}>
           <section
             className="panel delete-confirm-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Confirm project deletion"
+            aria-label={
+              deleteDialogTarget.kind === "all"
+                ? "Confirm delete all projects"
+                : "Confirm project deletion"
+            }
             onClick={(event) => event.stopPropagation()}
           >
-            <h3>Delete Project</h3>
-            <div>
-              Type <code>delete</code> to delete <strong>{pendingDeleteProject.name}</strong>.
-            </div>
+            <h3>{deleteDialogTarget.kind === "all" ? "Delete All Projects" : "Delete Project"}</h3>
+            {deleteDialogTarget.kind === "all" ? (
+              <div>
+                Type <code>delete</code> to remove all local projects and datasets (
+                <strong>{deleteDialogTarget.projectCount}</strong> project(s)).
+              </div>
+            ) : (
+              <div>
+                Type <code>delete</code> to delete{" "}
+                <strong>{deleteDialogTarget.projectName}</strong>.
+              </div>
+            )}
             <input
               autoFocus
               value={deleteConfirmText}

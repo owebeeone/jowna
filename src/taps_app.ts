@@ -347,6 +347,13 @@ export function registerJownaTaps(): void {
       await actions.refreshProjects();
     },
 
+    deleteAllProjects: async () => {
+      const projects = await storage.projects.listProjects();
+      await Promise.all(projects.map((project) => storage.projects.deleteProject(project.id)));
+      await storage.recentProjects.saveRecentProjectIds([]);
+      await actions.refreshProjects();
+    },
+
     renameProject: async (projectId, nextName) => {
       const project = await storage.projects.getProject(projectId);
       if (!project) {
