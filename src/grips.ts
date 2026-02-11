@@ -34,8 +34,19 @@ export interface JownaActions {
   importProjectArchive: (file: File) => Promise<ProjectImportReport>;
   renameDataset: (datasetId: string, nextName: string) => Promise<void>;
   openProject: (projectId: string) => Promise<void>;
-  parsePreview: () => Promise<void>;
-  applyImport: (datasetName: string) => Promise<void>;
+  parsePreview: () => Promise<{
+    canApply: boolean;
+    fatalError: string | null;
+    warnings: ImportWarning[];
+    preview: TablePreview | null;
+  }>;
+  applyImport: (
+    datasetName: string,
+    options?: {
+      openChart?: boolean;
+      closePopover?: boolean;
+    },
+  ) => Promise<void>;
   openChart: (datasetId?: string | null) => void;
   setProjectChartSettings: (settings: ChartSettings) => Promise<void>;
   backToSelection: () => void;

@@ -1,3 +1,5 @@
+import { formatKronaKeyLabel } from "./text";
+
 export interface KeyCalloutInputEntry {
   key: string;
   name: string;
@@ -42,6 +44,9 @@ const BUFFER_FACTOR = 0.1;
 const MARGIN_FACTOR = 0.015;
 const MAX_KEY_SIZE_FACTOR = 2;
 const THIN_LINE_WIDTH = 0.3;
+const MIN_LABEL_GAP_PX = 18;
+const MAX_LABEL_OUTSET_PX = 260;
+const BEND_OUTSET_PX = 20;
 
 export function createKeyCallouts(input: KeyCalloutLayoutInput): KeyCalloutRenderEntry[] {
   if (input.entries.length === 0 || input.totalMagnitude <= 0 || input.radius <= 0) {
@@ -58,21 +63,35 @@ export function createKeyCallouts(input: KeyCalloutLayoutInput): KeyCalloutRende
     keySize = maxKeySize;
   }
   const keyBuffer = keySize / 3;
+  const chartRight = input.centerX + input.radius;
+  const minLabelLeft = chartRight + Math.max(MIN_LABEL_GAP_PX, input.fontSizePx * 1.6);
+  const maxLabelOutset = Math.max(MAX_LABEL_OUTSET_PX, input.radius * 1.35);
+  const maxBoxLeft = input.width + maxLabelOutset;
+  const maxLabelWidth = Math.max(
+    24,
+    maxBoxLeft - keyBuffer - minLabelLeft - input.fontSizePx / 2,
+  );
+  const bendOutset = Math.max(BEND_OUTSET_PX, input.fontSizePx * 1.8);
 
   let currentKey = 1;
   let keyMinTextLeft =
     input.centerX + input.radius + buffer - buffer / (keys + 1) / 2 + input.fontSizePx / 2;
+  if (keyMinTextLeft < minLabelLeft) {
+    keyMinTextLeft = minLabelLeft;
+  }
   let keyMinAngle = 0;
 
   const callouts: KeyCalloutRenderEntry[] = [];
   for (const entry of input.entries) {
     const offset =
       input.height - (keys - currentKey + 1) * (keySize + keyBuffer) + keyBuffer - margin;
-    const boxLeft = input.width - keySize - margin;
-    const textY = offset + keySize / 2;
 
-    const label = formatKronaKeyLabel(entry.name, entry.magnitude, input.totalMagnitude);
+    const fullLabel = formatKronaKeyLabel(entry.name, entry.magnitude, input.totalMagnitude);
+    const label = fitLabelToWidth(fullLabel, maxLabelWidth, input.fontSizePx);
     const keyNameWidth = measureText(label, input.fontSizePx);
+    const minimumBoxLeft = minLabelLeft + keyNameWidth + keyBuffer + input.fontSizePx / 2;
+    const boxLeft = Math.max(input.width - keySize - margin, Math.min(maxBoxLeft, minimumBoxLeft));
+    const textY = offset + keySize / 2;
     const textLeft = boxLeft - keyBuffer - keyNameWidth - input.fontSizePx / 2;
     let labelLeft = textLeft;
 
@@ -112,8 +131,8 @@ export function createKeyCallouts(input: KeyCalloutLayoutInput): KeyCalloutRende
         input.centerY +
           Math.sin(angle) *
             (input.radius + (buffer * (currentKey - 1)) / (keys + 1) / 2 + buffer / 2)
-        ? input.radius + buffer - (buffer * currentKey) / (keys + 1) / 2
-        : input.radius + (buffer * currentKey) / (keys + 1) / 2 + buffer / 2;
+        ? input.radius + buffer - (buffer * currentKey) / (keys + 1) / 2 + bendOutset
+        : input.radius + (buffer * currentKey) / (keys + 1) / 2 + buffer / 2 + bendOutset;
 
     const outside =
       Math.sqrt(Math.pow(labelLeft - input.centerX, 2) + Math.pow(textY - input.centerY, 2)) >
@@ -275,6 +294,32 @@ function measureText(text: string, fontSizePx: number): number {
   return text.length * fontSizePx * 0.58;
 }
 
+function fitLabelToWidth(label: string, maxWidth: number, fontSizePx: number): string {
+  if (measureText(label, fontSizePx) <= maxWidth) {
+    return label;
+  }
+
+  const ellipsis = "...";
+  const approxCharWidth = Math.max(1, fontSizePx * 0.58);
+  const maxChars = Math.max(3, Math.floor(maxWidth / approxCharWidth));
+  if (maxChars <= 3) {
+    return ellipsis;
+  }
+
+  let endLength = Math.floor((maxChars - 1) / 2);
+  while (endLength > 0) {
+    const shortened = `${label.substring(0, endLength)}${ellipsis}${label.substring(
+      Math.max(0, label.length - endLength),
+    )}`;
+    if (measureText(shortened, fontSizePx) <= maxWidth) {
+      return shortened;
+    }
+    endLength -= 1;
+  }
+
+  return ellipsis;
+}
+
 function normalizeRadians(angle: number): number {
   let normalized = angle;
   while (normalized < 0) {
@@ -285,4 +330,3 @@ function normalizeRadians(angle: number): number {
   }
   return normalized;
 }
-import { formatKronaKeyLabel } from "./text";

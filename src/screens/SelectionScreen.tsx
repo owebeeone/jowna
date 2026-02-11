@@ -1,14 +1,11 @@
 import { useGrip, useTextGrip } from "@owebeeone/grip-react";
 import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
-import type { Dataset, ImportWarning } from "../domain";
+import type { Dataset, ImportSource, ImportWarning } from "../domain";
 import {
   ACTIVE_DATASET_ID,
   ACTIVE_PROJECT_ID,
   DATASETS,
   DEFAULT_IMPORT_PARAMETERS,
-  IMPORT_CAN_APPLY,
-  IMPORT_DATASET_NAME,
-  IMPORT_DATASET_NAME_TAP,
   IMPORT_FATAL_ERROR,
   IMPORT_LOADING,
   IMPORT_PARAMETERS,
@@ -45,12 +42,10 @@ export function SelectionScreen() {
   const importWarnings = useGrip(IMPORT_WARNINGS_STATE) ?? [];
   const importFatalError = useGrip(IMPORT_FATAL_ERROR);
   const importLoading = useGrip(IMPORT_LOADING) ?? false;
-  const importCanApply = useGrip(IMPORT_CAN_APPLY) ?? false;
   const importPopoverOpen = useGrip(IMPORT_POPOVER_OPEN) ?? false;
   const importPopoverOpenTap = useGrip(IMPORT_POPOVER_OPEN_TAP);
 
   const projectNameBind = useTextGrip(NEW_PROJECT_NAME, NEW_PROJECT_NAME_TAP);
-  const datasetNameBind = useTextGrip(IMPORT_DATASET_NAME, IMPORT_DATASET_NAME_TAP);
   const previewFilterBind = useTextGrip(PREVIEW_FILTER, PREVIEW_FILTER_TAP);
   const urlInputBind = useTextGrip(IMPORT_URL_INPUT, IMPORT_URL_INPUT_TAP);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
@@ -62,6 +57,21 @@ export function SelectionScreen() {
   const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const projectArchiveInputRef = useRef<HTMLInputElement | null>(null);
+  const [importFileSources, setImportFileSources] = useState<ImportSource[]>([]);
+  const [importParsedSourceNames, setImportParsedSourceNames] = useState<string[]>([]);
+  const [importParseIssues, setImportParseIssues] = useState<string[]>([]);
+  const [importApplyingBatch, setImportApplyingBatch] = useState(false);
+
+  const selectedImportSources =
+    importFileSources.length > 0 ? importFileSources : importSource ? [importSource] : [];
+  const importTargetProjectId = activeProjectId ?? projects[0]?.id ?? null;
+  const allSelectedSourcesParsed =
+    selectedImportSources.length > 0 &&
+    importParseIssues.length === 0 &&
+    importParsedSourceNames.length === selectedImportSources.length;
+  const canLoadParsedSources =
+    Boolean(actions) && allSelectedSourcesParsed && !importApplyingBatch;
+  const activeImportSourceName = importSource?.name ?? null;
 
   const filteredRows = (importPreview?.rows ?? []).filter((row) => {
     const query = previewFilterBind.value.trim().toLowerCase();
@@ -299,16 +309,25 @@ export function SelectionScreen() {
   };
 
   const onFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length === 0) {
+      setImportFileSources([]);
+      setImportParsedSourceNames([]);
+      setImportParseIssues([]);
       return;
     }
-    const content = await file.text();
-    importSourceTap?.set({
-      kind: "file",
-      name: file.name,
-      content,
-    });
+    const nextSources = await Promise.all(
+      files.map(async (file) => ({
+        kind: "file" as const,
+        name: file.name,
+        content: await file.text(),
+      })),
+    );
+    setImportFileSources(nextSources);
+    setImportParsedSourceNames([]);
+    setImportParseIssues([]);
+    importSourceTap?.set(nextSources[0] ?? null);
   };
 
   const onLoadFromUrl = async () => {
@@ -326,8 +345,121 @@ export function SelectionScreen() {
         name: nameFromUrl,
         content,
       });
+      setImportFileSources([]);
+      setImportParsedSourceNames([]);
+      setImportParseIssues([]);
     } catch (error) {
       console.error("Failed loading URL source", error);
+    }
+  };
+
+  const onSelectImportSource = async (source: ImportSource) => {
+    importSourceTap?.set(source);
+    if (!actions) {
+      return;
+    }
+    const parseResult = await actions.parsePreview();
+    setImportParsedSourceNames((current) => {
+      const withoutSource = current.filter((name) => name !== source.name);
+      return parseResult.canApply ? [...withoutSource, source.name] : withoutSource;
+    });
+    setImportParseIssues((current) => {
+      const withoutSource = current.filter((issue) => !issue.startsWith(`${source.name}:`));
+      if (parseResult.canApply) {
+        return withoutSource;
+      }
+      const detail = parseResult.fatalError ?? "No usable rows found.";
+      return [...withoutSource, `${source.name}: ${detail}`];
+    });
+  };
+
+  const onParseImportSources = async () => {
+    if (!actions) {
+      return;
+    }
+    const sourcesToParse = selectedImportSources;
+    if (sourcesToParse.length === 0) {
+      setImportParsedSourceNames([]);
+      setImportParseIssues(["Select one or more files (or a URL) before parsing."]);
+      return;
+    }
+
+    const parsedSourceNames: string[] = [];
+    const parseIssues: string[] = [];
+
+    for (const source of sourcesToParse) {
+      importSourceTap?.set(source);
+      const parseResult = await actions.parsePreview();
+      if (parseResult.canApply) {
+        parsedSourceNames.push(source.name);
+      } else {
+        const detail = parseResult.fatalError ?? "No usable rows found.";
+        parseIssues.push(`${source.name}: ${detail}`);
+      }
+    }
+
+    setImportParsedSourceNames(parsedSourceNames);
+    setImportParseIssues(parseIssues);
+
+    const preferredSource =
+      (activeImportSourceName
+        ? sourcesToParse.find((source) => source.name === activeImportSourceName)
+        : null) ??
+      sourcesToParse[0] ??
+      null;
+    importSourceTap?.set(preferredSource);
+    if (preferredSource) {
+      await actions.parsePreview();
+    }
+  };
+
+  const onLoadParsedSources = async () => {
+    if (!actions || !allSelectedSourcesParsed) {
+      return;
+    }
+    if (importTargetProjectId && (!activeProjectId || activeProjectId !== importTargetProjectId)) {
+      await actions.openProject(importTargetProjectId);
+    }
+    const sourcesToLoad = selectedImportSources;
+    if (sourcesToLoad.length === 0) {
+      return;
+    }
+    if (!importTargetProjectId) {
+      const firstSource = sourcesToLoad[0] ?? null;
+      const nextProjectName = firstSource
+        ? toProjectNameFromSourceName(firstSource.name)
+        : "Imported Project";
+      await actions.createProject(nextProjectName);
+    }
+
+    setImportApplyingBatch(true);
+    const loadedSourceNames: string[] = [];
+    const parseIssues: string[] = [];
+    try {
+      for (const source of sourcesToLoad) {
+        importSourceTap?.set(source);
+        const parseResult = await actions.parsePreview();
+        if (!parseResult.canApply) {
+          const detail = parseResult.fatalError ?? "No usable rows found.";
+          parseIssues.push(`${source.name}: ${detail}`);
+          continue;
+        }
+        await actions.applyImport(toDatasetNameFromSourceName(source.name), {
+          openChart: false,
+          closePopover: false,
+        });
+        loadedSourceNames.push(source.name);
+      }
+    } finally {
+      setImportApplyingBatch(false);
+    }
+
+    setImportParsedSourceNames(loadedSourceNames);
+    setImportParseIssues(parseIssues);
+
+    if (parseIssues.length === 0 && loadedSourceNames.length > 0) {
+      importPopoverOpenTap?.set(false);
+      actions.openChart();
     }
   };
 
@@ -576,7 +708,7 @@ export function SelectionScreen() {
               <div className="stack">
                 <label>
                   <span className="muted">File Source</span>
-                  <input type="file" onChange={onFileChange} />
+                  <input type="file" multiple onChange={onFileChange} />
                 </label>
                 <div className="row">
                   <input
@@ -589,7 +721,14 @@ export function SelectionScreen() {
                   </button>
                 </div>
                 <div className="muted">
-                  Source: <strong>{importSource?.name ?? "none"}</strong>
+                  Source:{" "}
+                  <strong>
+                    {selectedImportSources.length === 0
+                      ? "none"
+                      : selectedImportSources.length === 1
+                        ? selectedImportSources[0]?.name
+                        : `${selectedImportSources.length} files selected`}
+                  </strong>
                 </div>
               </div>
 
@@ -717,16 +856,61 @@ export function SelectionScreen() {
                 </label>
 
                 <div className="row">
-                  <button
-                    onClick={() => actions?.parsePreview()}
-                    disabled={!actions || importLoading}
-                  >
+                  <button onClick={onParseImportSources} disabled={!actions || importLoading}>
                     {importLoading ? "Parsing..." : "Preview Parse"}
                   </button>
                 </div>
               </div>
 
               <div className="panel stack" style={{ background: "#fafcfb" }}>
+                <div>
+                  <h4>Selected Sources</h4>
+                  <ul className="warning-list">
+                    {selectedImportSources.map((source, index) => {
+                      const parsed = importParsedSourceNames.includes(source.name);
+                      const isActive = source.name === activeImportSourceName;
+                      return (
+                        <li key={`selected-source-${source.name}-${index}`}>
+                          <button
+                            className="ghost"
+                            onClick={() => {
+                              void onSelectImportSource(source);
+                            }}
+                            style={{
+                              fontWeight: isActive ? 700 : 500,
+                              textDecoration: isActive ? "underline" : "none",
+                            }}
+                          >
+                            {source.name}
+                          </button>
+                          {" - "}
+                          <span className="muted">
+                            {parsed
+                              ? "parsed"
+                              : importParseIssues.length > 0
+                                ? "not parsed"
+                                : "pending"}
+                          </span>
+                        </li>
+                      );
+                    })}
+                    {selectedImportSources.length === 0 && (
+                      <li className="muted">No source files selected.</li>
+                    )}
+                  </ul>
+                </div>
+
+                {importParseIssues.length > 0 && (
+                  <div>
+                    <h4>Parse Issues</h4>
+                    <ul className="warning-list">
+                      {importParseIssues.map((issue, index) => (
+                        <li key={`parse-issue-${index}`}>{issue}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <h3>Preview</h3>
                 {importFatalError && <div style={{ color: "#b23a2f" }}>{importFatalError}</div>}
                 <div className="muted">Rows: {importPreview?.totalRows ?? 0}</div>
@@ -789,16 +973,11 @@ export function SelectionScreen() {
                 </div>
 
                 <div className="row">
-                  <input
-                    placeholder="Dataset name"
-                    value={datasetNameBind.value}
-                    onChange={datasetNameBind.onChange}
-                  />
                   <button
-                    onClick={() => actions?.applyImport(datasetNameBind.value)}
-                    disabled={!actions || !importCanApply || !activeProjectId}
+                    onClick={onLoadParsedSources}
+                    disabled={!canLoadParsedSources}
                   >
-                    Apply Import
+                    {importApplyingBatch ? "Loading..." : "Load now"}
                   </button>
                 </div>
               </div>
@@ -855,6 +1034,25 @@ export function SelectionScreen() {
       )}
     </div>
   );
+}
+
+function toDatasetNameFromSourceName(sourceName: string): string {
+  const trimmed = sourceName.trim();
+  if (trimmed.length === 0) {
+    return "Imported Dataset";
+  }
+
+  const withoutExtension = trimmed.replace(/\.[^/.]+$/, "").trim();
+  const baseName = withoutExtension.length > 0 ? withoutExtension : trimmed;
+  return baseName;
+}
+
+function toProjectNameFromSourceName(sourceName: string): string {
+  const datasetBase = toDatasetNameFromSourceName(sourceName);
+  if (datasetBase.length === 0) {
+    return "Imported Project";
+  }
+  return `${datasetBase} Project`;
 }
 
 function toDatasetJsonFileName(datasetName: string): string {

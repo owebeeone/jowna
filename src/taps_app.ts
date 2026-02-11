@@ -506,7 +506,12 @@ export function registerJownaTaps(): void {
         importPreviewTap.set(null);
         importWarningsTap.set([]);
         importCanApplyTap.set(false);
-        return;
+        return {
+          canApply: false,
+          fatalError: "Select a source file or URL before parsing.",
+          warnings: [],
+          preview: null,
+        };
       }
 
       importLoadingTap.set(true);
@@ -529,7 +534,14 @@ export function registerJownaTaps(): void {
           (result.tree.children?.length ?? 0) > 0;
 
         importCanApplyTap.set(hasUsableData);
-        importFatalTap.set(hasUsableData ? null : "No usable rows found.");
+        const fatalError = hasUsableData ? null : "No usable rows found.";
+        importFatalTap.set(fatalError);
+        return {
+          canApply: hasUsableData,
+          fatalError,
+          warnings: result.warnings,
+          preview: result.preview,
+        };
       } catch (error) {
         importDetectedFormatTap.set(null);
         importRowsTap.set([]);
@@ -537,13 +549,20 @@ export function registerJownaTaps(): void {
         importPreviewTap.set(null);
         importWarningsTap.set([]);
         importCanApplyTap.set(false);
-        importFatalTap.set((error as Error).message);
+        const fatalError = (error as Error).message;
+        importFatalTap.set(fatalError);
+        return {
+          canApply: false,
+          fatalError,
+          warnings: [],
+          preview: null,
+        };
       } finally {
         importLoadingTap.set(false);
       }
     },
 
-    applyImport: async (datasetName) => {
+    applyImport: async (datasetName, options) => {
       const projectId = activeProjectIdTap.get();
       const tree = importTreeTap.get();
       const rows = importRowsTap.get() ?? [];
@@ -589,9 +608,15 @@ export function registerJownaTaps(): void {
 
       await storage.projects.saveProject(nextProject);
       await actions.refreshProjects();
-      await actions.openChart(dataset.id);
+      const shouldOpenChart = options?.openChart ?? true;
+      if (shouldOpenChart) {
+        await actions.openChart(dataset.id);
+      }
       importDatasetNameTap.set(name);
-      importPopoverOpenTap.set(false);
+      const shouldClosePopover = options?.closePopover ?? true;
+      if (shouldClosePopover) {
+        importPopoverOpenTap.set(false);
+      }
     },
 
     openChart: (datasetId) => {

@@ -82,4 +82,33 @@ describe("createKeyCallouts", () => {
 
     expect(callouts[0]?.text).toBe("Tiny   0.4%");
   });
+
+  it("positions callout labels outside the chart edge and ellipsizes long labels when needed", () => {
+    const centerX = 310;
+    const radius = 270;
+    const callouts = createKeyCallouts({
+      entries: [
+        {
+          key: "Root/VeryLong",
+          name: "A very long species name that should not crowd the chart edge",
+          magnitude: 25,
+          startAngle: 0.2,
+          endAngle: 0.3,
+          fill: "rgb(120,150,210)",
+          interactionPath: ["Root", "VeryLong"],
+        },
+      ],
+      totalMagnitude: 100,
+      width: 620,
+      height: 620,
+      centerX,
+      centerY: 310,
+      radius,
+      fontSizePx: 11,
+    });
+
+    expect(callouts).toHaveLength(1);
+    expect(callouts[0]!.textBoxX).toBeGreaterThan(centerX + radius + 12);
+    expect(callouts[0]!.text.includes("...")).toBe(true);
+  });
 });
