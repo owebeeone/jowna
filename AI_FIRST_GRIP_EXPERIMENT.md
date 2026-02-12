@@ -59,7 +59,7 @@ Reviewing this repository's history confirms that the hardest work was chart-fid
 - Commits touching chart/fidelity areas (`features/chart`, `screens/chart`, `ChartScreen`): 26.
 - Commits touching grip-state core files (`grips`, `taps_app`, `SelectionScreen`, state rule test): 23.
 - Commit overlap is high, but chart-only commits still outnumber grip-only commits.
-Aggregate churn is chart-dominant.
+- Aggregate churn is chart-dominant.
 - Chart/fidelity files: `+19110 / -5044`.
 - Grip-state files: `+3117 / -431`.
 
